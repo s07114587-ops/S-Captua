@@ -1,235 +1,130 @@
+/*!
+ * S-Captcha Widget v2 — hardened build
+ * -------------------------------------------------------------------------
+ * IMPORTANT (read this before deploying):
+ * This script can only ever be a FRONT-END signal. Anything that runs in
+ * the browser can be inspected, monkey-patched, or skipped entirely by a
+ * bot that submits your form via a raw HTTP request. The only way this
+ * actually stops bots is if your SERVER calls the verify endpoint below
+ * with the token + your secret key before accepting the form submission,
+ * exactly like reCAPTCHA/hCaptcha/Turnstile do. See "SERVER-SIDE CONTRACT"
+ * at the bottom of this file for the API shape you need to implement.
+ * Everything above that line just makes the token harder to forge and
+ * gives your backend better signal to score — it is not itself a wall.
+ * -------------------------------------------------------------------------
+ */
 (function () {
   "use strict";
 
-  // Prevent multiple executions if script is embedded twice
-  if (window.__SCaptchaInitialized) return;
-  window.__SCaptchaInitialized = true;
-
-  // Detect script tag and extract parameters dynamically
-  var currentScript = document.currentScript || (function () {
-    var scripts = document.getElementsByTagName("script");
-    return scripts[scripts.length - 1];
-  })();
-
+  var SCRIPT_TAG = document.currentScript;
   var CFG = {
-    sitekey: (currentScript && currentScript.getAttribute("data-sitekey")) || "sc_default_key",
-    theme: (currentScript && currentScript.getAttribute("data-theme")) || "dark",
-    verifyEndpoint: (currentScript && currentScript.getAttribute("data-verify-endpoint")) || null,
-    assetBase: (currentScript && currentScript.getAttribute("data-asset-base")) || "https://www.scaptua.duckdns.org",
-    banBaseMs: 5000,
-    banMaxMs: 30 * 60 * 1000
+    sitekey: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-sitekey")) || "sc_test_default",
+    theme: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-theme")) || "dark",
+    lang: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-lang")) || "en",
+    verifyEndpoint: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-verify-endpoint")) || null,
+    banBaseMs: 5000,          // first ban is 5s, then doubles each repeat offense
+    banMaxMs: 30 * 60 * 1000, // cap at 30 min
+    assetBase: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-asset-base")) || "https://www.scaptua.duckdns.org"
   };
 
-  // -------------------------------------------------------------------------
-  // Self-Contained Dynamic CSS Injection
-  // -------------------------------------------------------------------------
+  var I18N = {
+    en: { human: "I am human", verify: "S-Captcha", verified: "Verified", extra: "Extra check needed",
+          checkTitle: "Quick visual check", dragHint: "Drag the ball into the hoop to verify you're human.",
+          sliderHint: "Slide the piece into place to verify you're human.", swish: "Verified — swish!",
+          tryAgain: "not quite — try again", triesLeft: "tries left", privacy: "Privacy", terms: "Terms", about: "About" }
+  };
+  function t(key) { var d = I18N[CFG.lang] || I18N.en; return d[key] || I18N.en[key] || key; }
+
   var css = `
-    :root {
-      --sc-bg: #0f172a;
-      --sc-panel: rgba(17, 28, 52, 0.92);
-      --sc-border: rgba(148, 163, 184, 0.2);
-      --sc-accent: #10b981;
-      --sc-accent-glow: rgba(16, 185, 129, 0.45);
-      --sc-text: #f8fafc;
-      --sc-text-dim: #94a3b8;
-      --sc-danger: #f43f5e;
-      --sc-radius: 12px;
-    }
+  :root{
+    --bg:#0f172a; --bg-soft:#111c34; --panel:rgba(17,28,52,0.92);
+    --border:rgba(148,163,184,0.2); --accent:#10b981; --accent-glow:rgba(16,185,129,0.45);
+    --text:#f8fafc; --text-dim:#94a3b8; --danger:#f43f5e; --radius:14px;
+  }
+  .scaptcha-auto-wrapper{ display:flex; justify-content:center; align-items:center; width:100%; margin:10px 0; }
+  .scaptcha{
+    width:320px; background:var(--panel); border:1px solid var(--border);
+    border-radius:var(--radius); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    box-shadow:0 8px 32px rgba(0,0,0,0.35); overflow:hidden; user-select:none;
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif; color:var(--text);
+  }
+  .scaptcha-body{ display:flex; align-items:center; gap:12px; padding:14px 16px; }
+  .sc-box{
+    width:26px; height:26px; flex:0 0 26px; border-radius:7px; border:2px solid var(--text-dim);
+    background:rgba(255,255,255,0.02); display:flex; align-items:center; justify-content:center;
+    cursor:pointer; transition:all .2s ease; position:relative;
+  }
+  .sc-box:hover{ border-color:var(--accent); }
+  .sc-box:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .sc-box.checked{ border-color:var(--accent); background:var(--accent); box-shadow:0 0 14px var(--accent-glow); }
+  .sc-box.failed{ border-color:var(--danger); animation:scShake .35s ease; }
+  .sc-box svg{ width:16px; height:16px; stroke:#0f172a; stroke-width:3; fill:none; stroke-linecap:round; stroke-linejoin:round; opacity:0; transform:scale(.5); transition:all .15s ease; }
+  .sc-box.checked svg{ opacity:1; transform:scale(1); }
+  .sc-spinner{ width:18px; height:18px; border-radius:50%; border:2.5px solid rgba(16,185,129,0.25); border-top-color:var(--accent); animation:scSpin .7s linear infinite; display:none; }
+  .sc-box.loading .sc-spinner{ display:block; }
+  .sc-box.loading svg{ display:none; }
+  .sc-label{ flex:1; cursor:pointer; }
+  .sc-label-text{ font-size:14.5px; font-weight:500; color:var(--text); line-height:1.2; }
+  .sc-sub{ font-size:11px; color:var(--text-dim); margin-top:2px; transition:color .2s ease; }
+  .sc-sub.ok{ color:var(--accent); }
+  .sc-sub.err{ color:var(--danger); }
+  .sc-badge{ flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:2px; opacity:.85; }
+  .sc-badge svg{ width:26px; height:26px; }
+  .sc-badge span{ font-size:8.5px; color:var(--text-dim); font-weight:600; }
+  .scaptcha-footer{ display:flex; justify-content:space-between; padding:8px 16px 12px; border-top:1px solid var(--border); }
+  .scaptcha-footer a{ font-size:10.5px; color:var(--text-dim); text-decoration:none; }
+  .sc-hp{ opacity:0!important; position:absolute!important; top:-9999px!important; left:-9999px!important; height:0!important; width:0!important; pointer-events:none; }
 
-    [data-theme="light"] {
-      --sc-bg: #ffffff;
-      --sc-panel: rgba(248, 250, 252, 0.95);
-      --sc-border: rgba(203, 213, 225, 0.8);
-      --sc-text: #0f172a;
-      --sc-text-dim: #64748b;
-    }
+  .sc-overlay{ position:fixed; inset:0; background:rgba(2,6,23,0.8); backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; z-index:999999; padding:20px; }
+  .sc-overlay.show{ display:flex; }
+  .sc-modal{ width:320px; background:linear-gradient(180deg, rgba(23,35,61,0.98), rgba(15,23,42,0.98)); border:1px solid var(--border); border-radius:var(--radius); box-shadow:0 20px 60px rgba(0,0,0,0.6); padding:16px; font-family:'Segoe UI',sans-serif; }
+  .sc-modal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; color:#fff; }
+  .sc-modal-head h3{ margin:0; font-size:13.5px; }
+  .sc-close{ cursor:pointer; color:var(--text-dim); font-size:18px; background:none; border:none; }
+  .sc-instructions{ font-size:11.5px; color:var(--text-dim); margin:0 0 10px; }
 
-    .scaptcha-auto-wrapper {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      width: 100%;
-      margin: 14px 0;
-      box-sizing: border-box;
-    }
+  .sc-court{ position:relative; height:220px; border-radius:10px; background:radial-gradient(circle at 50% 100%, rgba(16,185,129,0.12), transparent 60%), var(--bg-soft); border:1px dashed var(--border); overflow:hidden; touch-action:none; }
 
-    .scaptcha {
-      width: 100%;
-      max-width: 320px;
-      background: var(--sc-panel);
-      border: 1px solid var(--sc-border);
-      border-radius: var(--sc-radius);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
-      overflow: hidden;
-      user-select: none;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      color: var(--sc-text);
-      box-sizing: border-box;
-    }
+  .sc-hoop{ position:absolute; top:10px; left:50%; transform:translateX(-50%); width:90px; height:90px; display:flex; align-items:center; justify-content:center; }
+  .sc-hoop img{ width:100%; height:100%; object-fit:contain; pointer-events:none; }
+  .sc-hoop-zone{ position:absolute; left:50%; top:60%; transform:translate(-50%,-50%); width:40px; height:20px; border-radius:50%; }
 
-    .scaptcha-body {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 14px;
-    }
+  .sc-ball{ position:absolute; left:20px; bottom:25px; width:45px; height:45px; cursor:grab; touch-action:none; transition:left .35s cubic-bezier(.34,1.56,.64,1), bottom .35s cubic-bezier(.34,1.56,.64,1), opacity .25s ease, transform .2s ease; z-index:10; }
+  .sc-ball img{ width:100%; height:100%; object-fit:contain; pointer-events:none; }
+  .sc-ball.dragging{ cursor:grabbing; transition:none; filter:drop-shadow(0 6px 10px rgba(0,0,0,0.4)); }
 
-    .sc-box {
-      width: 24px;
-      height: 24px;
-      flex: 0 0 24px;
-      border-radius: 6px;
-      border: 2px solid var(--sc-text-dim);
-      background: rgba(255, 255, 255, 0.03);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      position: relative;
-    }
+  .sc-slider-track{ position:absolute; left:20px; right:20px; top:50%; transform:translateY(-50%); height:46px; border-radius:10px; background:rgba(255,255,255,0.04); border:1px solid var(--border); }
+  .sc-slider-target{ position:absolute; top:0; bottom:0; width:46px; border-radius:10px; background:rgba(16,185,129,0.15); border:2px dashed rgba(16,185,129,0.5); }
+  .sc-slider-piece{ position:absolute; top:-2px; left:0; width:46px; height:46px; border-radius:10px; background:var(--accent); box-shadow:0 4px 14px var(--accent-glow); cursor:grab; touch-action:none; display:flex; align-items:center; justify-content:center; font-size:18px; color:#0f172a; font-weight:700; }
+  .sc-slider-piece.dragging{ cursor:grabbing; }
 
-    .sc-box:hover {
-      border-color: var(--sc-accent);
-    }
+  .sc-fallback{ display:flex; align-items:center; justify-content:center; font-size:30px; user-select:none; }
+  .sc-hoop .sc-fallback{ font-size:40px; }
+  .sc-ball.success{ opacity:0; transform:scale(.4); }
+  .sc-court-msg{ position:absolute; bottom:6px; left:0; right:0; text-align:center; font-size:11px; color:var(--text-dim); pointer-events:none; }
 
-    .sc-box:focus-visible {
-      outline: 2px solid var(--sc-accent);
-      outline-offset: 2px;
-    }
+  .sc-verified-flash{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px; background:rgba(15,23,42,0.92); opacity:0; pointer-events:none; transition:opacity .25s ease; z-index:20; }
+  .sc-verified-flash.show{ opacity:1; pointer-events:all; }
+  .sc-verified-flash svg{ width:40px; height:40px; stroke:var(--accent); }
+  .sc-verified-flash span{ font-size:12.5px; color:var(--accent); font-weight:600; }
 
-    .sc-box.checked {
-      border-color: var(--sc-accent);
-      background: var(--sc-accent);
-      box-shadow: 0 0 12px var(--sc-accent-glow);
-    }
-
-    .sc-box.failed {
-      border-color: var(--sc-danger);
-      animation: scShake 0.35s ease;
-    }
-
-    .sc-box svg {
-      width: 14px;
-      height: 14px;
-      stroke: #0f172a;
-      stroke-width: 3.5;
-      fill: none;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      opacity: 0;
-      transform: scale(0.5);
-      transition: all 0.15s ease;
-    }
-
-    .sc-box.checked svg {
-      opacity: 1;
-      transform: scale(1);
-    }
-
-    .sc-spinner {
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      border: 2px solid rgba(16, 185, 129, 0.25);
-      border-top-color: var(--sc-accent);
-      animation: scSpin 0.7s linear infinite;
-      display: none;
-    }
-
-    .sc-box.loading .sc-spinner {
-      display: block;
-    }
-
-    .sc-box.loading svg {
-      display: none;
-    }
-
-    .sc-label {
-      flex: 1;
-      cursor: pointer;
-    }
-
-    .sc-label-text {
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--sc-text);
-      line-height: 1.2;
-    }
-
-    .sc-sub {
-      font-size: 10.5px;
-      color: var(--sc-text-dim);
-      margin-top: 2px;
-      transition: color 0.2s ease;
-    }
-
-    .sc-sub.ok { color: var(--sc-accent); }
-    .sc-sub.err { color: var(--sc-danger); }
-
-    .sc-badge {
-      flex: 0 0 auto;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 2px;
-      opacity: 0.85;
-    }
-
-    .sc-badge svg { width: 22px; height: 22px; }
-    .sc-badge span { font-size: 8px; color: var(--sc-text-dim); font-weight: 700; letter-spacing: 0.5px; }
-
-    .scaptcha-footer {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 14px 8px;
-      border-top: 1px solid var(--sc-border);
-      background: rgba(0, 0, 0, 0.1);
-    }
-
-    .scaptcha-footer a {
-      font-size: 10px;
-      color: var(--sc-text-dim);
-      text-decoration: none;
-    }
-
-    .scaptcha-footer a:hover {
-      text-decoration: underline;
-    }
-
-    .sc-hp {
-      opacity: 0 !important;
-      position: absolute !important;
-      top: -9999px !important;
-      left: -9999px !important;
-      height: 0 !important;
-      width: 0 !important;
-      pointer-events: none;
-    }
-
-    @keyframes scSpin { to { transform: rotate(360deg); } }
-    @keyframes scShake {
-      0%, 100% { transform: translateX(0); }
-      25% { transform: translateX(-4px); }
-      75% { transform: translateX(4px); }
-    }
+  @keyframes scSpin{ to{ transform:rotate(360deg); } }
+  @keyframes scShake{ 0%,100%{ transform:translateX(0); } 25%{ transform:translateX(-4px); } 75%{ transform:translateX(4px); } }
   `;
-
   var styleTag = document.createElement("style");
   styleTag.setAttribute("data-scaptcha", "1");
   styleTag.textContent = css;
   document.head.appendChild(styleTag);
 
-  // -------------------------------------------------------------------------
-  // Persistent Ban & Enforcement Store (LocalStorage + Cookie Fallback)
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------
+  // Ban store: localStorage + cookie fallback (a bot script that only
+  // clears one of the two still gets caught by the other; still trivial
+  // for a determined attacker to clear both, hence the server contract).
+  // ---------------------------------------------------------------------
   function setCookie(name, value, ms) {
     var expires = new Date(Date.now() + ms).toUTCString();
     document.cookie = name + "=" + encodeURIComponent(value) + "; expires=" + expires + "; path=/; SameSite=Lax";
   }
-
   function getCookie(name) {
     var m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
     return m ? decodeURIComponent(m[1]) : null;
@@ -243,7 +138,6 @@
     var n = parseInt(localStorage.getItem("scaptcha_offense_count") || "0", 10);
     return isNaN(n) ? 0 : n;
   }
-
   function bumpOffenseCount() {
     var n = getOffenseCount() + 1;
     localStorage.setItem("scaptcha_offense_count", String(n));
@@ -254,9 +148,8 @@
     var offense = bumpOffenseCount();
     var duration = Math.min(CFG.banBaseMs * Math.pow(2, offense - 1), CFG.banMaxMs);
     var banUntil = Date.now() + duration;
-    
     localStorage.setItem("scaptcha_ban_until", String(banUntil));
-    localStorage.setItem("scaptcha_ban_reason", reason || "suspicious_activity");
+    localStorage.setItem("scaptcha_ban_reason", reason || "unknown");
     setCookie("scaptcha_ban_until", String(banUntil), duration);
     redirectToBan();
   }
@@ -265,7 +158,6 @@
     var untilLS = parseInt(localStorage.getItem("scaptcha_ban_until") || "0", 10);
     var untilCK = parseInt(getCookie("scaptcha_ban_until") || "0", 10);
     var until = Math.max(isNaN(untilLS) ? 0 : untilLS, isNaN(untilCK) ? 0 : untilCK);
-    
     if (until && Date.now() < until) {
       redirectToBan();
       return true;
@@ -273,9 +165,11 @@
     return false;
   }
 
-  // -------------------------------------------------------------------------
-  // Telemetry & Security Signal Collectors
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------
+  // Signal collection: mouse entropy + keyboard use + webdriver flag +
+  // time-on-page + input capability. Combined into one score instead of
+  // a single pass/fail check, so no single spoofed signal clears you.
+  // ---------------------------------------------------------------------
   var mousePoints = [], MAX_POINTS = 60;
   var keyboardEventsSeen = 0;
   var pageLoadTime = Date.now();
@@ -292,31 +186,29 @@
   function mouseEntropyScore() {
     if (mousePoints.length < 8) return 0;
     var pts = mousePoints, straightCount = 0, velocities = [];
-    
     for (var i = 2; i < pts.length; i++) {
       var a = pts[i - 2], b = pts[i - 1], c = pts[i];
       var v1x = b.x - a.x, v1y = b.y - a.y, v2x = c.x - b.x, v2y = c.y - b.y;
-      
-      // Check for perfectly linear synthetic trajectories
       if (Math.abs(v1x * v2y - v1y * v2x) < 0.6) straightCount++;
-      
-      var dt = Math.max(1, c.t - b.t);
-      var dist = Math.hypot(c.x - b.x, c.y - b.y);
+      var dt = Math.max(1, c.t - b.t), dist = Math.hypot(c.x - b.x, c.y - b.y);
       velocities.push(dist / dt);
     }
-    
     var straightRatio = straightCount / (pts.length - 2);
     var mean = velocities.reduce(function (s, v) { return s + v; }, 0) / velocities.length;
     var variance = velocities.reduce(function (s, v) { return s + Math.pow(v - mean, 2); }, 0) / velocities.length;
-    
-    return (straightRatio > 0.92 || variance < 0.0008) ? 0 : 1;
+    var suspicious = straightRatio > 0.92 || variance < 0.0008;
+    return suspicious ? 0 : 1;
   }
 
   function webdriverScore() {
+    // navigator.webdriver is set by Selenium/Playwright/Puppeteer unless
+    // explicitly patched out. Not authoritative, but a real signal.
     return navigator.webdriver ? 0 : 1;
   }
 
   function timingScore() {
+    // A form filled and submitted in under ~1.2s of page load is very
+    // unlikely to be a human who read anything.
     return (Date.now() - pageLoadTime) > 1200 ? 1 : 0;
   }
 
@@ -326,18 +218,20 @@
 
   function looksHuman() {
     var score = mouseEntropyScore() + webdriverScore() + timingScore() + inputCapabilityScore();
+    // require at least 3 of 4 independent signals to agree
     return score >= 3;
   }
 
-  // -------------------------------------------------------------------------
-  // Base64 Security Token Generation
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------
+  // Token: still generated client-side (any JS-visible token can be),
+  // but now carries a nonce + timestamp + sitekey your server should
+  // check the shape and freshness of before calling the real verify
+  // endpoint. See SERVER-SIDE CONTRACT at the bottom.
+  // ---------------------------------------------------------------------
   function randomNonce(len) {
     var bytes = new Uint8Array(len);
     (window.crypto || window.msCrypto).getRandomValues(bytes);
-    return Array.prototype.map.call(bytes, function (b) {
-      return b.toString(16).padStart(2, "0");
-    }).join("");
+    return Array.prototype.map.call(bytes, function (b) { return b.toString(16).padStart(2, "0"); }).join("");
   }
 
   function buildToken() {
@@ -352,9 +246,15 @@
         input: inputCapabilityScore()
       }
     };
+    // base64url-encode the payload; server decodes, checks freshness
+    // (< 2 min old), checks sitekey, then treats it as a claim to verify
+    // — NOT as proof by itself.
     return btoa(JSON.stringify(payload)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   }
 
+  // Optional: if the embedder configured a verify endpoint, ping it so
+  // the server can log/allowlist the token server-side ahead of submit.
+  // This is best-effort and never blocks the UI.
   function notifyServerOptional(token) {
     if (!CFG.verifyEndpoint) return;
     try {
@@ -366,47 +266,28 @@
     } catch (e) {}
   }
 
-  // -------------------------------------------------------------------------
-  // Automatic Widget Initialization & DOM Mounting
-  // -------------------------------------------------------------------------
-  function initWidget() {
+  function initCaptcha(mountEl) {
     if (checkBanStatus()) return;
-
-    // Detect target location automatically
-    var targetForm = document.querySelector("form");
-    var mountPoint = null;
-
-    if (targetForm) {
-      var submitBtn = targetForm.querySelector('button[type="submit"], input[type="submit"]');
-      if (submitBtn && submitBtn.parentNode) {
-        mountPoint = { parent: submitBtn.parentNode, before: submitBtn };
-      } else {
-        mountPoint = { parent: targetForm, before: targetForm.firstChild };
-      }
-    } else {
-      mountPoint = { parent: document.body, before: null };
-    }
 
     var wrapper = document.createElement("div");
     wrapper.className = "scaptcha-auto-wrapper";
-    wrapper.setAttribute("data-theme", CFG.theme);
 
     wrapper.innerHTML = `
       <div class="scaptcha" data-sitekey="${CFG.sitekey}">
         <div class="scaptcha-body">
           <label class="sc-hp" aria-hidden="true">
-            <input type="text" id="scHoneypot1" name="website_confirm" tabindex="-1" autocomplete="off">
+            <input type="text" id="scHoneypot1" name="website" tabindex="-1" autocomplete="off">
           </label>
           <label class="sc-hp" aria-hidden="true">
-            <input type="email" id="scHoneypot2" name="email_verify" tabindex="-1" autocomplete="off">
+            <input type="email" id="scHoneypot2" name="email_confirm" tabindex="-1" autocomplete="off">
           </label>
-          <div class="sc-box" id="scBox" role="checkbox" aria-checked="false" aria-label="I am human" tabindex="0">
+          <div class="sc-box" id="scBox" role="checkbox" aria-checked="false" aria-label="${t('human')}" tabindex="0">
             <div class="sc-spinner"></div>
             <svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg>
           </div>
           <div class="sc-label" id="scLabelWrap">
-            <div class="sc-label-text">I am human</div>
-            <div class="sc-sub" id="scSub" aria-live="polite">S-Captcha</div>
+            <div class="sc-label-text">${t('human')}</div>
+            <div class="sc-sub" id="scSub" aria-live="polite">${t('verify')}</div>
           </div>
           <div class="sc-badge">
             <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="1.8">
@@ -417,54 +298,70 @@
           </div>
         </div>
         <div class="scaptcha-footer">
-          <a href="${CFG.assetBase}/privacy.html" target="_blank" rel="noopener">Privacy</a>
-          <a href="${CFG.assetBase}/terms.html" target="_blank" rel="noopener">Terms</a>
-          <a href="${CFG.assetBase}/about.html" target="_blank" rel="noopener">About</a>
+          <a href="${CFG.assetBase}/privacy.html" target="_blank">${t('privacy')}</a>
+          <a href="${CFG.assetBase}/terms.html" target="_blank">${t('terms')}</a>
+          <a href="${CFG.assetBase}/about.html" target="_blank">${t('about')}</a>
         </div>
         <input type="hidden" name="scaptcha_token" id="scToken" value="">
       </div>
+      <div class="sc-overlay" id="scOverlay">
+        <div class="sc-modal" role="dialog" aria-modal="true">
+          <div class="sc-modal-head">
+            <h3>${t('checkTitle')}</h3>
+            <button type="button" class="sc-close" id="scClose" aria-label="Close">&times;</button>
+          </div>
+          <p class="sc-instructions" id="scInstructions">${t('dragHint')}</p>
+          <div class="sc-court" id="scCourt">
+            <div id="scChallengeMount"></div>
+            <div class="sc-court-msg" id="scCourtMsg"></div>
+            <div class="sc-verified-flash" id="scFlash">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l6 6L20 6"/></svg>
+              <span>${t('swish')}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     `;
 
-    // Mount to the detected position
-    if (mountPoint.before) {
-      mountPoint.parent.insertBefore(wrapper, mountPoint.before);
+    var host = mountEl || document.querySelector("form") || document.body;
+    if (mountEl) {
+      mountEl.appendChild(wrapper);
+    } else if (host.tagName === "FORM") {
+      host.insertBefore(wrapper, host.firstChild);
     } else {
-      mountPoint.parent.appendChild(wrapper);
+      host.appendChild(wrapper);
     }
 
-    // Element references
     var verified = false, checking = false;
-    var scBox = wrapper.querySelector("#scBox");
-    var scSub = wrapper.querySelector("#scSub");
-    var scHp1 = wrapper.querySelector("#scHoneypot1");
-    var scHp2 = wrapper.querySelector("#scHoneypot2");
+    var scBox = wrapper.querySelector("#scBox"), scSub = wrapper.querySelector("#scSub");
+    var scHp1 = wrapper.querySelector("#scHoneypot1"), scHp2 = wrapper.querySelector("#scHoneypot2");
     var scToken = wrapper.querySelector("#scToken");
-    var scLabelWrap = wrapper.querySelector("#scLabelWrap");
+    var scLabelWrap = wrapper.querySelector("#scLabelWrap"), scOverlay = wrapper.querySelector("#scOverlay");
+    var scClose = wrapper.querySelector("#scClose");
+    var scCourtMsg = wrapper.querySelector("#scCourtMsg"), scFlash = wrapper.querySelector("#scFlash");
+    var scChallengeMount = wrapper.querySelector("#scChallengeMount");
+    var scInstructions = wrapper.querySelector("#scInstructions");
 
-    // Spam click detector: 5 rapid clicks under 200ms threshold triggers ban
+    // Fast spam-click detector: 5 clicks under 200ms apart => ban
     var clickCount = 0, lastClickTime = 0;
     document.addEventListener("click", function () {
       var now = Date.now();
       if (now - lastClickTime < 200) {
         clickCount++;
-        if (clickCount >= 5) { triggerBan("rapid_click_spam"); return; }
+        if (clickCount >= 5) { triggerBan("rapid_click"); return; }
       } else {
         clickCount = 1;
       }
       lastClickTime = now;
     });
 
-    // Invisible Honeypot Trap Listeners
     [scHp1, scHp2].forEach(function (hp) {
       hp.addEventListener("input", function () {
-        if (this.value.trim().length > 0) triggerBan("honeypot_trap_" + this.id);
+        if (this.value.trim().length > 0) triggerBan("honeypot_" + this.id);
       });
     });
 
-    function setSubText(text, cls) {
-      scSub.textContent = text;
-      scSub.className = "sc-sub" + (cls ? " " + cls : "");
-    }
+    function setSub(text, cls) { scSub.textContent = text; scSub.className = "sc-sub" + (cls ? " " + cls : ""); }
 
     function markVerified() {
       verified = true;
@@ -472,72 +369,208 @@
       scBox.classList.remove("loading", "failed");
       scBox.classList.add("checked");
       scBox.setAttribute("aria-checked", "true");
-      setSubText("Verified", "ok");
-
+      setSub(t("verified"), "ok");
       var token = buildToken();
       scToken.value = token;
       notifyServerOptional(token);
     }
 
-    function handleVerification() {
+    function handleCheck() {
       if (checkBanStatus()) return;
       if (verified || checking) return;
+      if (scHp1.value.trim().length > 0 || scHp2.value.trim().length > 0) { triggerBan("honeypot_on_submit"); return; }
 
-      if (scHp1.value.trim().length > 0 || scHp2.value.trim().length > 0) {
-        triggerBan("honeypot_on_click");
-        return;
-      }
-
-      checking = true;
-      scBox.classList.add("loading");
-      setSubText("Verifying…");
-
+      checking = true; scBox.classList.add("loading"); setSub("Verifying…");
       setTimeout(function () {
-        checking = false;
-        scBox.classList.remove("loading");
-        if (looksHuman()) {
-          markVerified();
-        } else {
-          scBox.classList.add("failed");
-          setSubText("Verification failed", "err");
-          setTimeout(function () {
-            scBox.classList.remove("failed");
-            setSubText("Try again");
-          }, 1500);
-        }
-      }, 500);
+        checking = false; scBox.classList.remove("loading");
+        if (looksHuman()) { markVerified(); }
+        else { setSub(t("extra"), "err"); openChallenge(); }
+      }, 450);
     }
 
-    scBox.addEventListener("click", handleVerification);
+    scBox.addEventListener("click", handleCheck);
     scBox.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        handleVerification();
-      }
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleCheck(); }
     });
-    scLabelWrap.addEventListener("click", handleVerification);
+    scLabelWrap.addEventListener("click", handleCheck);
 
-    // Guard parent form submit event
-    if (targetForm) {
-      targetForm.addEventListener("submit", function (e) {
-        if (checkBanStatus()) {
-          e.preventDefault();
-          return;
+    // ---- Challenge: randomly basketball or slider ----
+    var missCount = 0;
+
+    function closeChallenge() { scOverlay.classList.remove("show"); }
+    scClose.addEventListener("click", closeChallenge);
+
+    function onMiss() {
+      missCount++;
+      if (missCount >= 3) { triggerBan("challenge_fail_3x"); return true; }
+      scCourtMsg.textContent = t("tryAgain") + " (" + (3 - missCount) + " " + t("triesLeft") + ")";
+      return false;
+    }
+
+    function onSolved() {
+      scFlash.classList.add("show");
+      setTimeout(function () { closeChallenge(); markVerified(); }, 650);
+    }
+
+    function openChallenge() {
+      missCount = 0;
+      scFlash.classList.remove("show");
+      scChallengeMount.innerHTML = "";
+      scCourtMsg.textContent = "";
+      var useSlider = Math.random() < 0.5;
+      scInstructions.textContent = useSlider ? t("sliderHint") : t("dragHint");
+      if (useSlider) mountSliderChallenge(scChallengeMount, onSolved, onMiss);
+      else mountBasketballChallenge(scChallengeMount, onSolved, onMiss);
+      scOverlay.classList.add("show");
+    }
+
+    function mountBasketballChallenge(mount, solved, miss) {
+      mount.innerHTML = `
+        <div class="sc-hoop">
+          <img src="${CFG.assetBase}/1.png" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+          <div class="sc-fallback" style="display:none;">🧺</div>
+          <div class="sc-hoop-zone" id="scZone"></div>
+        </div>
+        <div class="sc-ball" id="scBall">
+          <img src="${CFG.assetBase}/0.png" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+          <div class="sc-fallback" style="display:none;">🏀</div>
+        </div>
+      `;
+      var scBall = mount.querySelector("#scBall"), scZone = mount.querySelector("#scZone");
+      var scCourt = mount.closest(".sc-court");
+      var dragging = false, startLeft, startBottom, startX, startY;
+
+      function resetBall() { scBall.style.left = "20px"; scBall.style.bottom = "25px"; scBall.classList.remove("success"); }
+      resetBall();
+
+      function pointFromEvent(e) { return (e.touches && e.touches[0]) ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY }; }
+      function onDown(e) {
+        dragging = true; scBall.classList.add("dragging");
+        var p = pointFromEvent(e); startX = p.x; startY = p.y;
+        var rect = scBall.getBoundingClientRect(), courtRect = scCourt.getBoundingClientRect();
+        startLeft = rect.left - courtRect.left; startBottom = courtRect.bottom - rect.bottom;
+        e.preventDefault();
+      }
+      function onMove(e) {
+        if (!dragging) return;
+        var p = pointFromEvent(e);
+        scBall.style.left = (startLeft + (p.x - startX)) + "px";
+        scBall.style.bottom = (startBottom - (p.y - startY)) + "px";
+        e.preventDefault();
+      }
+      function onUp() {
+        if (!dragging) return; dragging = false; scBall.classList.remove("dragging");
+        var ballRect = scBall.getBoundingClientRect(), zoneRect = scZone.getBoundingClientRect();
+        var hit = (ballRect.left + ballRect.width / 2 > zoneRect.left && ballRect.left + ballRect.width / 2 < zoneRect.right &&
+                   ballRect.top + ballRect.height / 2 > zoneRect.top && ballRect.top + ballRect.height / 2 < zoneRect.bottom);
+        if (hit) { scBall.classList.add("success"); solved(); cleanup(); }
+        else { if (miss()) { cleanup(); return; } resetBall(); }
+      }
+      function cleanup() {
+        scBall.removeEventListener("pointerdown", onDown);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      }
+      scBall.addEventListener("pointerdown", onDown);
+      window.addEventListener("pointermove", onMove, { passive: false });
+      window.addEventListener("pointerup", onUp);
+    }
+
+    function mountSliderChallenge(mount, solved, miss) {
+      var targetPct = 30 + Math.random() * 45; // 30%-75% across the track
+      mount.innerHTML = `
+        <div class="sc-slider-track" id="scTrack">
+          <div class="sc-slider-target" id="scTarget" style="left:${targetPct}%;"></div>
+          <div class="sc-slider-piece" id="scPiece">➤</div>
+        </div>
+      `;
+      var track = mount.querySelector("#scTrack"), target = mount.querySelector("#scTarget"), piece = mount.querySelector("#scPiece");
+      var dragging = false, startX, startLeft;
+
+      function pointX(e) { return (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX; }
+      function onDown(e) {
+        dragging = true; piece.classList.add("dragging");
+        startX = pointX(e);
+        startLeft = piece.getBoundingClientRect().left - track.getBoundingClientRect().left;
+        e.preventDefault();
+      }
+      function onMove(e) {
+        if (!dragging) return;
+        var dx = pointX(e) - startX;
+        var trackW = track.clientWidth;
+        var newLeft = Math.max(0, Math.min(trackW - 46, startLeft + dx));
+        piece.style.left = newLeft + "px";
+        e.preventDefault();
+      }
+      function onUp() {
+        if (!dragging) return; dragging = false; piece.classList.remove("dragging");
+        var pieceRect = piece.getBoundingClientRect(), targetRect = target.getBoundingClientRect();
+        var pieceCenter = pieceRect.left + pieceRect.width / 2;
+        var hit = pieceCenter > targetRect.left && pieceCenter < targetRect.right;
+        if (hit) { solved(); cleanup(); }
+        else {
+          if (miss()) { cleanup(); return; }
+          piece.style.left = "0px";
         }
+      }
+      function cleanup() {
+        piece.removeEventListener("pointerdown", onDown);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      }
+      piece.addEventListener("pointerdown", onDown);
+      window.addEventListener("pointermove", onMove, { passive: false });
+      window.addEventListener("pointerup", onUp);
+    }
+
+    var formEl = wrapper.closest("form") || document.querySelector("form");
+    if (formEl) {
+      formEl.addEventListener("submit", function (e) {
+        if (checkBanStatus()) { e.preventDefault(); return; }
         if (!verified || scHp1.value.trim().length > 0 || scHp2.value.trim().length > 0) {
           e.preventDefault();
-          triggerBan("unverified_form_submit");
+          triggerBan("unverified_submit");
         }
       });
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Self-Execution Bootstrapper
-  // -------------------------------------------------------------------------
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initWidget);
+  function boot() {
+    if (checkBanStatus()) return;
+    var explicitMounts = document.querySelectorAll(".scaptcha[data-sitekey]");
+    if (explicitMounts.length) {
+      explicitMounts.forEach(function (el) {
+        var container = document.createElement("div");
+        el.replaceWith(container);
+        initCaptcha(container);
+      });
+    } else {
+      initCaptcha(null);
+    }
+  }
+
+  if ("loading" === document.readyState) {
+    document.addEventListener("DOMContentLoaded", boot);
   } else {
-    initWidget();
+    boot();
   }
 })();
+
+/* ===========================================================================
+ * SERVER-SIDE CONTRACT (implement this in your backend, not the browser)
+ * ===========================================================================
+ * 1. Client posts the form with `scaptcha_token` in the body.
+ * 2. Your server base64url-decodes the token and checks:
+ *      - payload.sitekey matches the site making the request
+ *      - payload.ts is within the last ~120000 ms (reject stale tokens)
+ *      - payload.nonce has not been seen before (store used nonces for a
+ *        few minutes — e.g. Redis SETNX with a TTL — to block replay)
+ *      - payload.signals sums to >= 3 (matches the client-side gate, but
+ *        now checked somewhere the client can't lie to for free)
+ * 3. If a `data-verify-endpoint` was configured, your endpoint also gets a
+ *    best-effort POST { token, sitekey } while the user is interacting —
+ *    use this to correlate IP, request rate, and user-agent server-side
+ *    for additional scoring your JS can never see.
+ * 4. Reject the form submission (HTTP 4xx) if any check fails. Do this on
+ *    every write endpoint the captcha guards, not just once at signup.
+ * =========================================================================== */
