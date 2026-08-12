@@ -41,7 +41,7 @@
   .scaptcha-footer a{ font-size:10.5px; color:var(--text-dim); text-decoration:none; }
   .sc-hp{ opacity:0!important; position:absolute!important; top:-9999px!important; pointer-events:none; }
   
-  /* MODAL BASKETBALL */
+  /* MODAL BASKETBALL FIXES */
   .sc-overlay{ position:fixed; inset:0; background:rgba(2,6,23,0.8); backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; z-index:999999; padding:20px; }
   .sc-overlay.show{ display:flex; }
   .sc-modal{ width:320px; background:linear-gradient(180deg, rgba(23,35,61,0.98), rgba(15,23,42,0.98)); border:1px solid var(--border); border-radius:var(--radius); box-shadow:0 20px 60px rgba(0,0,0,0.6); padding:16px; font-family:'Segoe UI',sans-serif; }
@@ -49,19 +49,29 @@
   .sc-modal-head h3{ margin:0; font-size:13.5px; }
   .sc-close{ cursor:pointer; color:var(--text-dim); font-size:18px; background:none; border:none; }
   .sc-instructions{ font-size:11.5px; color:var(--text-dim); margin:0 0 10px; }
-  .sc-court{ position:relative; height:210px; border-radius:10px; background:radial-gradient(circle at 50% 100%, rgba(16,185,129,0.12), transparent 60%), var(--bg-soft); border:1px dashed var(--border); overflow:hidden; touch-action:none; }
-  .sc-hoop{ position:absolute; top:14px; left:50%; transform:translateX(-50%); width:84px; height:84px; display:flex; align-items:center; justify-content:center; }
-  .sc-hoop-zone{ position:absolute; left:50%; top:58%; transform:translate(-50%,-50%); width:46px; height:20px; border-radius:50%; }
-  .sc-ball{ position:absolute; left:20px; bottom:14px; width:52px; height:52px; cursor:grab; touch-action:none; transition:left .35s cubic-bezier(.34,1.56,.64,1), bottom .35s cubic-bezier(.34,1.56,.64,1), opacity .25s ease, transform .2s ease; z-index:5; }
+  
+  .sc-court{ position:relative; height:220px; border-radius:10px; background:radial-gradient(circle at 50% 100%, rgba(16,185,129,0.12), transparent 60%), var(--bg-soft); border:1px dashed var(--border); overflow:hidden; touch-action:none; }
+  
+  /* Hoop Fix */
+  .sc-hoop{ position:absolute; top:10px; left:50%; transform:translateX(-50%); width:90px; height:90px; display:flex; align-items:center; justify-content:center; }
+  .sc-hoop img{ width:100%; height:100%; object-fit:contain; pointer-events:none; }
+  .sc-hoop-zone{ position:absolute; left:50%; top:60%; transform:translate(-50%,-50%); width:40px; height:20px; border-radius:50%; }
+  
+  /* Ball Fix */
+  .sc-ball{ position:absolute; left:20px; bottom:25px; width:45px; height:45px; cursor:grab; touch-action:none; transition:left .35s cubic-bezier(.34,1.56,.64,1), bottom .35s cubic-bezier(.34,1.56,.64,1), opacity .25s ease, transform .2s ease; z-index:10; }
+  .sc-ball img{ width:100%; height:100%; object-fit:contain; pointer-events:none; }
   .sc-ball.dragging{ cursor:grabbing; transition:none; filter:drop-shadow(0 6px 10px rgba(0,0,0,0.4)); }
-  .sc-fallback{ display:flex; align-items:center; justify-content:center; font-size:34px; user-select:none; }
-  .sc-hoop .sc-fallback{ font-size:46px; }
+  
+  .sc-fallback{ display:flex; align-items:center; justify-content:center; font-size:30px; user-select:none; }
+  .sc-hoop .sc-fallback{ font-size:40px; }
   .sc-ball.success{ opacity:0; transform:scale(.4); }
-  .sc-court-msg{ position:absolute; bottom:8px; left:0; right:0; text-align:center; font-size:10.5px; color:var(--text-dim); pointer-events:none; }
-  .sc-verified-flash{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px; background:rgba(15,23,42,0.92); opacity:0; pointer-events:none; transition:opacity .25s ease; }
+  .sc-court-msg{ position:absolute; bottom:6px; left:0; right:0; text-align:center; font-size:11px; color:var(--text-dim); pointer-events:none; }
+  
+  .sc-verified-flash{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px; background:rgba(15,23,42,0.92); opacity:0; pointer-events:none; transition:opacity .25s ease; z-index:20; }
   .sc-verified-flash.show{ opacity:1; pointer-events:all; }
   .sc-verified-flash svg{ width:40px; height:40px; stroke:var(--accent); }
   .sc-verified-flash span{ font-size:12.5px; color:var(--accent); font-weight:600; }
+  
   @keyframes scSpin{ to{ transform:rotate(360deg); } }
   @keyframes scShake{ 0%,100%{ transform:translateX(0); } 25%{ transform:translateX(-4px); } 75%{ transform:translateX(4px); } }
   `;
@@ -70,7 +80,6 @@
   document.head.appendChild(styleTag);
 
   function initCaptcha(){
-    var targetForm = document.querySelector("form") || document.body;
     var wrapper = document.createElement("div");
     wrapper.className = "scaptcha-auto-wrapper";
     
@@ -196,8 +205,8 @@
     scHoneypot.addEventListener('input', redirectToBan);
 
     /* Basketball Drag & Drop */
-    var dragging = false, startLeft, startBottom, startX, startY, pointerId;
-    function resetBall(){ scBall.style.left = '20px'; scBall.style.bottom = '14px'; scBall.classList.remove('success'); }
+    var dragging = false, startLeft, startBottom, startX, startY;
+    function resetBall(){ scBall.style.left = '20px'; scBall.style.bottom = '25px'; scBall.classList.remove('success'); }
     function openChallenge(){ resetBall(); scFlash.classList.remove('show'); scOverlay.classList.add('show'); scCourtMsg.textContent = 'drag & drop the ball →'; }
     function closeChallenge(){ scOverlay.classList.remove('show'); }
     scClose.addEventListener('click', closeChallenge);
