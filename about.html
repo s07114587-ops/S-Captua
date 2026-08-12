@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About SG Dev — S-Captcha</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.7);
+      --primary: #10b981;
+      --accent: #38bdf8;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --border: #334155;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      background-image: radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.15), transparent 50%);
+    }
+
+    header {
+      width: 100%;
+      max-width: 900px;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-sizing: border-box;
+    }
+
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--primary);
+      font-weight: 800;
+      font-size: 20px;
+    }
+
+    .logo-container img {
+      width: 45px;
+      height: 45px;
+      object-fit: contain;
+      filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.5));
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      margin-left: 15px;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--primary);
+    }
+
+    .container {
+      width: 90%;
+      max-width: 800px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      border-radius: 20px;
+      padding: 35px;
+      margin: 20px 0 40px 0;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+      box-sizing: border-box;
+    }
+
+    h1 {
+      color: var(--primary);
+      font-size: 28px;
+      margin-top: 0;
+    }
+
+    .badge {
+      background: rgba(16, 185, 129, 0.2);
+      color: var(--primary);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: bold;
+      display: inline-block;
+      margin-bottom: 15px;
+      border: 1px solid var(--primary);
+    }
+
+    p {
+      line-height: 1.7;
+      color: #cbd5e1;
+      font-size: 15px;
+    }
+
+    .info-box {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+
+    .info-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+
+    .info-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .info-item a {
+      color: var(--accent);
+      text-decoration: none;
+      word-break: break-all;
+    }
+
+    .info-item a:hover {
+      text-decoration: underline;
+    }
+
+    .future-plans ul {
+      padding-left: 20px;
+      color: #cbd5e1;
+    }
+
+    .future-plans li {
+      margin-bottom: 10px;
+      line-height: 1.6;
+    }
+
+    footer {
+      margin-top: auto;
+      padding: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <a href="#" class="logo-container">
+      <img src="a.png" alt="S-Captcha Logo">
+      <span>S-Captcha</span>
+    </a>
+    <div class="nav-links">
+      <a href="terms.html">Terms</a>
+      <a href="privacy.html">Privacy</a>
+    </div>
+  </header>
+
+  <div class="container">
+    <span class="badge">SG Dev (Shubhomoy)</span>
+    <h1>About S-Captcha & The Developer</h1>
+    
+    <p>
+      Welcome to <b>S-Captcha</b>! This project is designed and developed independently by <b>SG Dev (Shubhomoy)</b>. At 12 years old, I am building S-Captcha as a free, open-source, and lightweight web security captcha system while mastering web development and cybersecurity concepts.
+    </p>
+
+    <div class="info-box">
+      <div class="info-item">
+        <strong>👤 Developer:</strong> <span>SG Dev (Shubhomoy) — Age 12</span>
+      </div>
+      <div class="info-item">
+        <strong>📧 Email:</strong> <a href="mailto:sgdev@netc.fr">sgdev@netc.fr</a>
+      </div>
+      <div class="info-item">
+        <strong>🌐 GitHub:</strong> <a href="https://github.com/s07114587-ops" target="_blank">github.com/s07114587-ops</a>
+      </div>
+    </div>
+
+    <h2>🚀 Future Expansion Plans</h2>
+    <p>
+      S-Captcha is being actively developed to become a robust, zero-cost alternative to heavy security captchas:
+    </p>
+    
+    <div class="future-plans">
+      <ul>
+        <li><b>3-Layer Protection System:</b> Invisible Smart Captcha, Drag-and-Drop / Image Challenges, and Honeypot Traps.</li>
+        <li><b>Smart Behavior Analysis:</b> Mouse movement curvature, velocity, and trajectory tracking to differentiate bots from humans seamlessly.</li>
+        <li><b>Zero-Cost Encrypted Backend:</b> SHA-256 cryptographic hashing to maintain zero-log database security without overhead costs.</li>
+        <li><b>Dynamic Retro & Modern Themes:</b> Custom themes including 90s Pixel, 2012 Gradient, and Modern Glassmorphism looks.</li>
+        <li><b>One-Line Script Integration:</b> Easy embedding into any web page using a single JavaScript widget file.</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>
+    &copy; 2026 S-Captcha by SG Dev. All rights reserved.
+  </footer>
+
+</body>
+</html>
