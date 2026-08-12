@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terms of Service — S-Captcha</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.7);
+      --primary: #10b981;
+      --accent: #38bdf8;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --border: #334155;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    header {
+      width: 100%;
+      max-width: 900px;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-sizing: border-box;
+    }
+
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--primary);
+      font-weight: 800;
+      font-size: 20px;
+    }
+
+    .logo-container img {
+      width: 45px;
+      height: 45px;
+      object-fit: contain;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      margin-left: 15px;
+      font-size: 14px;
+    }
+
+    .container {
+      width: 90%;
+      max-width: 800px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      border-radius: 20px;
+      padding: 35px;
+      margin: 20px 0 40px 0;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+      box-sizing: border-box;
+    }
+
+    h1 {
+      color: var(--primary);
+      font-size: 28px;
+    }
+
+    h3 {
+      color: var(--accent);
+      margin-top: 20px;
+    }
+
+    p {
+      line-height: 1.7;
+      color: #cbd5e1;
+      font-size: 14px;
+    }
+
+    footer {
+      margin-top: auto;
+      padding: 20px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <a href="about.html" class="logo-container">
+      <img src="a.png" alt="S-Captcha Logo">
+      <span>S-Captcha</span>
+    </a>
+    <div class="nav-links">
+      <a href="about.html">About</a>
+      <a href="privacy.html">Privacy</a>
+    </div>
+  </header>
+
+  <div class="container">
+    <h1>Terms of Service</h1>
+    <p>By using or integrating S-Captcha services created by SG Dev (Shubhomoy), you agree to comply with the following terms:</p>
+
+    <h3>1. Fair Use Policy</h3>
+    <p>S-Captcha is an open-source tool intended to protect web forms from spam and automated bot submissions. Any malicious attempt to bypass, exploit, or flood the API infrastructure is strictly prohibited.</p>
+
+    <h3>2. Open Source License & Support</h3>
+    <p>S-Captcha is independently maintained by <b>SG Dev (Shubhomoy)</b>. For developer queries, contributions, or reporting security vulnerabilities, please reach out via GitHub or Email.</p>
+
+    <h3>3. Developer Contact</h3>
+    <p>
+      Developer Email: <a href="mailto:sgdev@netc.fr" style="color: var(--accent);">sgdev@netc.fr</a><br>
+      GitHub Profile: <a href="https://github.com/s07114587-ops" target="_blank" style="color: var(--accent);">github.com/s07114587-ops</a>
+    </p>
+  </div>
+
+  <footer>
+    &copy; 2026 S-Captcha by SG Dev. All rights reserved.
+  </footer>
+
+</body>
+</html>
