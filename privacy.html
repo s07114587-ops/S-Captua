@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — S-Captcha</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.7);
+      --primary: #10b981;
+      --accent: #38bdf8;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --border: #334155;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    header {
+      width: 100%;
+      max-width: 900px;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-sizing: border-box;
+    }
+
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--primary);
+      font-weight: 800;
+      font-size: 20px;
+    }
+
+    .logo-container img {
+      width: 45px;
+      height: 45px;
+      object-fit: contain;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      margin-left: 15px;
+      font-size: 14px;
+    }
+
+    .container {
+      width: 90%;
+      max-width: 800px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      border-radius: 20px;
+      padding: 35px;
+      margin: 20px 0 40px 0;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+      box-sizing: border-box;
+    }
+
+    h1 {
+      color: var(--primary);
+      font-size: 28px;
+    }
+
+    h3 {
+      color: var(--accent);
+      margin-top: 20px;
+    }
+
+    p {
+      line-height: 1.7;
+      color: #cbd5e1;
+      font-size: 14px;
+    }
+
+    footer {
+      margin-top: auto;
+      padding: 20px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <a href="about.html" class="logo-container">
+      <img src="a.png" alt="S-Captcha Logo">
+      <span>S-Captcha</span>
+    </a>
+    <div class="nav-links">
+      <a href="about.html">About</a>
+      <a href="terms.html">Terms</a>
+    </div>
+  </header>
+
+  <div class="container">
+    <h1>Privacy Policy</h1>
+    <p>S-Captcha values user privacy. Our security infrastructure strictly adheres to privacy-first guidelines and zero-data-logging principles.</p>
+
+    <h3>1. Data Encryption (SHA-256)</h3>
+    <p>We do not collect or store plain IP addresses or personal browsing data. Any IP information processed during verification is immediately hashed using <b>SHA-256 cryptography</b> for anonymized bot mitigation.</p>
+
+    <h3>2. No Activity Tracking & History Auto-Purge</h3>
+    <p>S-Captcha never tracks personal browsing history across websites. All verification logs automatically expire and get cleared every 12 hours.</p>
+
+    <h3>3. Contact Information</h3>
+    <p>
+      If you have questions regarding privacy or data handling, feel free to contact SG Dev (Shubhomoy) via email: 
+      <a href="mailto:sgdev@netc.fr" style="color: var(--accent);">sgdev@netc.fr</a>
+    </p>
+  </div>
+
+  <footer>
+    &copy; 2026 S-Captcha by SG Dev. All rights reserved.
+  </footer>
+
+</body>
+</html>
