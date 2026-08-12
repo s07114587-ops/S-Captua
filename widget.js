@@ -79,7 +79,30 @@
   styleTag.innerHTML = css;
   document.head.appendChild(styleTag);
 
+  /* Helper Ban System */
+  function redirectToBan(){
+    window.location.href = "https://www.scaptua.duckdns.org/to-dear-bot-or-hacker.html";
+  }
+
+  function triggerBan(durationInMs){
+    var banUntil = Date.now() + durationInMs;
+    localStorage.setItem("scaptcha_ban_until", banUntil.toString());
+    redirectToBan();
+  }
+
+  function checkBanStatus(){
+    var banUntil = localStorage.getItem("scaptcha_ban_until");
+    if (banUntil && Date.now() < parseInt(banUntil, 10)) {
+      redirectToBan();
+      return true;
+    }
+    return false;
+  }
+
   function initCaptcha(){
+    // পেজ লোড হতেই ব্যান স্ট্যাটাস চেক
+    if (checkBanStatus()) return;
+
     var wrapper = document.createElement("div");
     wrapper.className = "scaptcha-auto-wrapper";
     
@@ -155,9 +178,21 @@
     var scZone = document.getElementById('scZone'), scCourt = document.getElementById('scCourt');
     var scCourtMsg = document.getElementById('scCourtMsg'), scFlash = document.getElementById('scFlash');
 
-    function redirectToBan(){
-      window.location.href = "https://www.scaptua.duckdns.org/to-dear-bot-or-hacker.html";
-    }
+    /* ১. ফাস্ট স্প্যাম ক্লিক ডিটেক্টর (২০০ মি.সে.-এর নিচে ৫টা ক্লিক করলে ৫ সেকেন্ড ব্যান) */
+    var clickCount = 0, lastClickTime = 0;
+    document.addEventListener('click', function(){
+      var currentTime = Date.now();
+      if (currentTime - lastClickTime < 200) {
+        clickCount++;
+        if (clickCount >= 5) {
+          triggerBan(5000); // 5 Seconds Ban
+          return;
+        }
+      } else {
+        clickCount = 1;
+      }
+      lastClickTime = currentTime;
+    });
 
     document.addEventListener('mousemove', function(e){
       mousePoints.push({ x: e.clientX, y: e.clientY, t: Date.now() });
@@ -190,8 +225,14 @@
     }
 
     function handleCheck(){
+      if (checkBanStatus()) return;
       if (verified || checking) return;
-      if (scHoneypot.value.trim().length > 0){ redirectToBan(); return; }
+
+      /* ২. Honeypot Trap (১০ মিনিট / 600,000 ms ব্যান) */
+      if (scHoneypot.value.trim().length > 0){ 
+        triggerBan(600000); 
+        return; 
+      }
 
       checking = true; scBox.classList.add('loading'); setSub('Verifying…');
       setTimeout(function(){
@@ -202,10 +243,18 @@
 
     scBox.addEventListener('click', handleCheck);
     scLabelWrap.addEventListener('click', handleCheck);
-    scHoneypot.addEventListener('input', redirectToBan);
+
+    /* Honeypot Input-এ টাইপ করার সাথে সাথে ১০ মিনিটের ব্যান */
+    scHoneypot.addEventListener('input', function(){
+      if (this.value.trim().length > 0) {
+        triggerBan(600000);
+      }
+    });
 
     /* Basketball Drag & Drop */
     var dragging = false, startLeft, startBottom, startX, startY;
+    var basketballMissCount = 0; // মিস ট্র্যাক করার জন্য variable
+
     function resetBall(){ scBall.style.left = '20px'; scBall.style.bottom = '25px'; scBall.classList.remove('success'); }
     function openChallenge(){ resetBall(); scFlash.classList.remove('show'); scOverlay.classList.add('show'); scCourtMsg.textContent = 'drag & drop the ball →'; }
     function closeChallenge(){ scOverlay.classList.remove('show'); }
@@ -213,7 +262,8 @@
 
     function pointFromEvent(e){ return (e.touches && e.touches[0]) ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY }; }
     function onPointerDown(e){
-      if (verified) return; dragging = true; scBall.classList.add('dragging');
+      if (checkBanStatus() || verified) return; 
+      dragging = true; scBall.classList.add('dragging');
       var p = pointFromEvent(e); startX = p.x; startY = p.y;
       var rect = scBall.getBoundingClientRect(), courtRect = scCourt.getBoundingClientRect();
       startLeft = rect.left - courtRect.left; startBottom = courtRect.bottom - rect.bottom;
@@ -234,7 +284,16 @@
       if (hit){
         scBall.classList.add('success'); scFlash.classList.add('show');
         setTimeout(function(){ closeChallenge(); markVerified(); }, 650);
-      } else { resetBall(); scCourtMsg.textContent = 'not quite — try again'; }
+      } else { 
+        /* ৩. Basketball মিস হলে ব্যান লজিক (৩ বার মিস হলে ৫ মিনিট / 300,000 ms ব্যান) */
+        basketballMissCount++;
+        if (basketballMissCount >= 3) {
+          triggerBan(300000); 
+          return;
+        }
+        resetBall(); 
+        scCourtMsg.textContent = 'not quite — try again (' + (3 - basketballMissCount) + ' tries left)'; 
+      }
     }
 
     scBall.addEventListener('pointerdown', onPointerDown);
@@ -244,9 +303,13 @@
     // Form submit restriction
     if(formEl){
       formEl.addEventListener('submit', function(e){
+        if (checkBanStatus()) {
+          e.preventDefault();
+          return;
+        }
         if(!verified || scHoneypot.value.trim().length > 0){
           e.preventDefault();
-          redirectToBan();
+          triggerBan(600000); // Honeypot or Unverified Submit
         }
       });
     }
