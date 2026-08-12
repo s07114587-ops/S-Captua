@@ -1,10 +1,10 @@
-name: S-Captcha IP Ban & Clean Worker
+name: S-Captcha IP Ban Worker
 
 on:
   schedule:
-    # প্রতি ৫ মিনিটে একবার লগের অবস্থা ফিক্স ও সিঙ্ক করবে
+    # প্রতি ৫ মিনিটে রান হবে
     - cron: '*/5 * * * *'
-  workflow_dispatch: # ম্যানুয়ালি রান করার জন্য
+  workflow_dispatch: # ম্যানুয়ালি রান করার বোতাম দেবে
 
 jobs:
   manage-ip-bans:
@@ -16,7 +16,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-python-version: '3.10'
+          python-version: '3.10'
 
       - name: Process IP Ban Cleanups
         run: |
