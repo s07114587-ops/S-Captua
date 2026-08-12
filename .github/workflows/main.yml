@@ -1,0 +1,30 @@
+name: S-Captcha IP Ban & Clean Worker
+
+on:
+  schedule:
+    # প্রতি ৫ মিনিটে একবার লগের অবস্থা ফিক্স ও সিঙ্ক করবে
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # ম্যানুয়ালি রান করার জন্য
+
+jobs:
+  manage-ip-bans:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-python-version: '3.10'
+
+      - name: Process IP Ban Cleanups
+        run: |
+          python scripts/clean_banned_ips.py
+
+      - name: Commit and Push Updated Ban List
+        run: |
+          git config --global user.name "S-Captcha-Bot"
+          git config --global user.email "bot@scaptcha.local"
+          git add banned_ips.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-clean expired IP bans [Skip CI]" && git push)
