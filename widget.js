@@ -1,17 +1,5 @@
 /*!
- * S-Captcha Widget v2 — hardened build
- * -------------------------------------------------------------------------
- * IMPORTANT (read this before deploying):
- * This script can only ever be a FRONT-END signal. Anything that runs in
- * the browser can be inspected, monkey-patched, or skipped entirely by a
- * bot that submits your form via a raw HTTP request. The only way this
- * actually stops bots is if your SERVER calls the verify endpoint below
- * with the token + your secret key before accepting the form submission,
- * exactly like reCAPTCHA/hCaptcha/Turnstile do. See "SERVER-SIDE CONTRACT"
- * at the bottom of this file for the API shape you need to implement.
- * Everything above that line just makes the token harder to forge and
- * gives your backend better signal to score — it is not itself a wall.
- * -------------------------------------------------------------------------
+ * S-Captcha Widget v2 — Hardened Build with Image Assets
  */
 (function () {
   "use strict";
@@ -22,8 +10,8 @@
     theme: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-theme")) || "dark",
     lang: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-lang")) || "en",
     verifyEndpoint: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-verify-endpoint")) || null,
-    banBaseMs: 5000,          // first ban is 5s, then doubles each repeat offense
-    banMaxMs: 30 * 60 * 1000, // cap at 30 min
+    banBaseMs: 5000,          
+    banMaxMs: 30 * 60 * 1000, 
     assetBase: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-asset-base")) || "https://www.scaptua.duckdns.org"
   };
 
@@ -116,11 +104,6 @@
   styleTag.textContent = css;
   document.head.appendChild(styleTag);
 
-  // ---------------------------------------------------------------------
-  // Ban store: localStorage + cookie fallback (a bot script that only
-  // clears one of the two still gets caught by the other; still trivial
-  // for a determined attacker to clear both, hence the server contract).
-  // ---------------------------------------------------------------------
   function setCookie(name, value, ms) {
     var expires = new Date(Date.now() + ms).toUTCString();
     document.cookie = name + "=" + encodeURIComponent(value) + "; expires=" + expires + "; path=/; SameSite=Lax";
@@ -165,11 +148,6 @@
     return false;
   }
 
-  // ---------------------------------------------------------------------
-  // Signal collection: mouse entropy + keyboard use + webdriver flag +
-  // time-on-page + input capability. Combined into one score instead of
-  // a single pass/fail check, so no single spoofed signal clears you.
-  // ---------------------------------------------------------------------
   var mousePoints = [], MAX_POINTS = 60;
   var keyboardEventsSeen = 0;
   var pageLoadTime = Date.now();
@@ -200,34 +178,15 @@
     return suspicious ? 0 : 1;
   }
 
-  function webdriverScore() {
-    // navigator.webdriver is set by Selenium/Playwright/Puppeteer unless
-    // explicitly patched out. Not authoritative, but a real signal.
-    return navigator.webdriver ? 0 : 1;
-  }
-
-  function timingScore() {
-    // A form filled and submitted in under ~1.2s of page load is very
-    // unlikely to be a human who read anything.
-    return (Date.now() - pageLoadTime) > 1200 ? 1 : 0;
-  }
-
-  function inputCapabilityScore() {
-    return (keyboardEventsSeen > 0 || pointerCapable) ? 1 : 0;
-  }
+  function webdriverScore() { return navigator.webdriver ? 0 : 1; }
+  function timingScore() { return (Date.now() - pageLoadTime) > 1200 ? 1 : 0; }
+  function inputCapabilityScore() { return (keyboardEventsSeen > 0 || pointerCapable) ? 1 : 0; }
 
   function looksHuman() {
     var score = mouseEntropyScore() + webdriverScore() + timingScore() + inputCapabilityScore();
-    // require at least 3 of 4 independent signals to agree
     return score >= 3;
   }
 
-  // ---------------------------------------------------------------------
-  // Token: still generated client-side (any JS-visible token can be),
-  // but now carries a nonce + timestamp + sitekey your server should
-  // check the shape and freshness of before calling the real verify
-  // endpoint. See SERVER-SIDE CONTRACT at the bottom.
-  // ---------------------------------------------------------------------
   function randomNonce(len) {
     var bytes = new Uint8Array(len);
     (window.crypto || window.msCrypto).getRandomValues(bytes);
@@ -246,15 +205,9 @@
         input: inputCapabilityScore()
       }
     };
-    // base64url-encode the payload; server decodes, checks freshness
-    // (< 2 min old), checks sitekey, then treats it as a claim to verify
-    // — NOT as proof by itself.
     return btoa(JSON.stringify(payload)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   }
 
-  // Optional: if the embedder configured a verify endpoint, ping it so
-  // the server can log/allowlist the token server-side ahead of submit.
-  // This is best-effort and never blocks the UI.
   function notifyServerOptional(token) {
     if (!CFG.verifyEndpoint) return;
     try {
@@ -342,7 +295,6 @@
     var scChallengeMount = wrapper.querySelector("#scChallengeMount");
     var scInstructions = wrapper.querySelector("#scInstructions");
 
-    // Fast spam-click detector: 5 clicks under 200ms apart => ban
     var clickCount = 0, lastClickTime = 0;
     document.addEventListener("click", function () {
       var now = Date.now();
@@ -394,7 +346,6 @@
     });
     scLabelWrap.addEventListener("click", handleCheck);
 
-    // ---- Challenge: randomly basketball or slider ----
     var missCount = 0;
 
     function closeChallenge() { scOverlay.classList.remove("show"); }
@@ -424,6 +375,7 @@
       scOverlay.classList.add("show");
     }
 
+    // 🏀 1.png (ঝুড়ি) এবং 0.png (বল) যুক্ত Basketball Challenge
     function mountBasketballChallenge(mount, solved, miss) {
       mount.innerHTML = `
         <div class="sc-hoop">
@@ -445,132 +397,4 @@
 
       function pointFromEvent(e) { return (e.touches && e.touches[0]) ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY }; }
       function onDown(e) {
-        dragging = true; scBall.classList.add("dragging");
-        var p = pointFromEvent(e); startX = p.x; startY = p.y;
-        var rect = scBall.getBoundingClientRect(), courtRect = scCourt.getBoundingClientRect();
-        startLeft = rect.left - courtRect.left; startBottom = courtRect.bottom - rect.bottom;
-        e.preventDefault();
-      }
-      function onMove(e) {
-        if (!dragging) return;
-        var p = pointFromEvent(e);
-        scBall.style.left = (startLeft + (p.x - startX)) + "px";
-        scBall.style.bottom = (startBottom - (p.y - startY)) + "px";
-        e.preventDefault();
-      }
-      function onUp() {
-        if (!dragging) return; dragging = false; scBall.classList.remove("dragging");
-        var ballRect = scBall.getBoundingClientRect(), zoneRect = scZone.getBoundingClientRect();
-        var hit = (ballRect.left + ballRect.width / 2 > zoneRect.left && ballRect.left + ballRect.width / 2 < zoneRect.right &&
-                   ballRect.top + ballRect.height / 2 > zoneRect.top && ballRect.top + ballRect.height / 2 < zoneRect.bottom);
-        if (hit) { scBall.classList.add("success"); solved(); cleanup(); }
-        else { if (miss()) { cleanup(); return; } resetBall(); }
-      }
-      function cleanup() {
-        scBall.removeEventListener("pointerdown", onDown);
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-      }
-      scBall.addEventListener("pointerdown", onDown);
-      window.addEventListener("pointermove", onMove, { passive: false });
-      window.addEventListener("pointerup", onUp);
-    }
-
-    function mountSliderChallenge(mount, solved, miss) {
-      var targetPct = 30 + Math.random() * 45; // 30%-75% across the track
-      mount.innerHTML = `
-        <div class="sc-slider-track" id="scTrack">
-          <div class="sc-slider-target" id="scTarget" style="left:${targetPct}%;"></div>
-          <div class="sc-slider-piece" id="scPiece">➤</div>
-        </div>
-      `;
-      var track = mount.querySelector("#scTrack"), target = mount.querySelector("#scTarget"), piece = mount.querySelector("#scPiece");
-      var dragging = false, startX, startLeft;
-
-      function pointX(e) { return (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX; }
-      function onDown(e) {
-        dragging = true; piece.classList.add("dragging");
-        startX = pointX(e);
-        startLeft = piece.getBoundingClientRect().left - track.getBoundingClientRect().left;
-        e.preventDefault();
-      }
-      function onMove(e) {
-        if (!dragging) return;
-        var dx = pointX(e) - startX;
-        var trackW = track.clientWidth;
-        var newLeft = Math.max(0, Math.min(trackW - 46, startLeft + dx));
-        piece.style.left = newLeft + "px";
-        e.preventDefault();
-      }
-      function onUp() {
-        if (!dragging) return; dragging = false; piece.classList.remove("dragging");
-        var pieceRect = piece.getBoundingClientRect(), targetRect = target.getBoundingClientRect();
-        var pieceCenter = pieceRect.left + pieceRect.width / 2;
-        var hit = pieceCenter > targetRect.left && pieceCenter < targetRect.right;
-        if (hit) { solved(); cleanup(); }
-        else {
-          if (miss()) { cleanup(); return; }
-          piece.style.left = "0px";
-        }
-      }
-      function cleanup() {
-        piece.removeEventListener("pointerdown", onDown);
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-      }
-      piece.addEventListener("pointerdown", onDown);
-      window.addEventListener("pointermove", onMove, { passive: false });
-      window.addEventListener("pointerup", onUp);
-    }
-
-    var formEl = wrapper.closest("form") || document.querySelector("form");
-    if (formEl) {
-      formEl.addEventListener("submit", function (e) {
-        if (checkBanStatus()) { e.preventDefault(); return; }
-        if (!verified || scHp1.value.trim().length > 0 || scHp2.value.trim().length > 0) {
-          e.preventDefault();
-          triggerBan("unverified_submit");
-        }
-      });
-    }
-  }
-
-  function boot() {
-    if (checkBanStatus()) return;
-    var explicitMounts = document.querySelectorAll(".scaptcha[data-sitekey]");
-    if (explicitMounts.length) {
-      explicitMounts.forEach(function (el) {
-        var container = document.createElement("div");
-        el.replaceWith(container);
-        initCaptcha(container);
-      });
-    } else {
-      initCaptcha(null);
-    }
-  }
-
-  if ("loading" === document.readyState) {
-    document.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
-})();
-
-/* ===========================================================================
- * SERVER-SIDE CONTRACT (implement this in your backend, not the browser)
- * ===========================================================================
- * 1. Client posts the form with `scaptcha_token` in the body.
- * 2. Your server base64url-decodes the token and checks:
- *      - payload.sitekey matches the site making the request
- *      - payload.ts is within the last ~120000 ms (reject stale tokens)
- *      - payload.nonce has not been seen before (store used nonces for a
- *        few minutes — e.g. Redis SETNX with a TTL — to block replay)
- *      - payload.signals sums to >= 3 (matches the client-side gate, but
- *        now checked somewhere the client can't lie to for free)
- * 3. If a `data-verify-endpoint` was configured, your endpoint also gets a
- *    best-effort POST { token, sitekey } while the user is interacting —
- *    use this to correlate IP, request rate, and user-agent server-side
- *    for additional scoring your JS can never see.
- * 4. Reject the form submission (HTTP 4xx) if any check fails. Do this on
- *    every write endpoint the captcha guards, not just once at signup.
- * =========================================================================== */
+        dragging = true; scBall
