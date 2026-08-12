@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>S-Captcha · Verify you're human</title>
+<style>
+  :root{
+    --bg:#0f172a;
+    --bg-soft:#111c34;
+    --panel:rgba(17,28,52,0.72);
+    --border:rgba(148,163,184,0.14);
+    --accent:#10b981;
+    --accent-dim:rgba(16,185,129,0.16);
+    --accent-glow:rgba(16,185,129,0.45);
+    --text:#f8fafc;
+    --text-dim:#94a3b8;
+    --danger:#f43f5e;
+    --radius:14px;
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(16,185,129,0.08), transparent 40%),
+      radial-gradient(circle at 80% 80%, rgba(16,185,129,0.06), transparent 45%),
+      var(--bg);
+    color:var(--text);
+    padding:24px;
+  }
+
+  /* ============ WIDGET ============ */
+  .scaptcha{
+    width:320px;
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
+    box-shadow:0 8px 32px rgba(0,0,0,0.35);
+    overflow:hidden;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  .scaptcha-body{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:14px 16px;
+  }
+
+  /* custom checkbox */
+  .sc-box{
+    width:26px;
+    height:26px;
+    flex:0 0 26px;
+    border-radius:7px;
+    border:2px solid var(--text-dim);
+    background:rgba(255,255,255,0.02);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    transition:border-color .2s ease, background .2s ease, box-shadow .2s ease;
+    position:relative;
+  }
+  .sc-box:hover{ border-color:var(--accent); }
+  .sc-box.checked{
+    border-color:var(--accent);
+    background:var(--accent);
+    box-shadow:0 0 14px var(--accent-glow);
+  }
+  .sc-box.failed{
+    border-color:var(--danger);
+    animation:shake .35s ease;
+  }
+  .sc-box svg{
+    width:16px;height:16px;
+    stroke:#0f172a;
+    stroke-width:3;
+    fill:none;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+    opacity:0;
+    transform:scale(.5);
+    transition:opacity .15s ease, transform .15s ease;
+  }
+  .sc-box.checked svg{ opacity:1; transform:scale(1); }
+
+  .sc-spinner{
+    width:18px;height:18px;
+    border-radius:50%;
+    border:2.5px solid rgba(16,185,129,0.25);
+    border-top-color:var(--accent);
+    animation:spin .7s linear infinite;
+    display:none;
+  }
+  .sc-box.loading .sc-spinner{ display:block; }
+  .sc-box.loading svg{ display:none; }
+
+  .sc-label{ flex:1; cursor:pointer; }
+  .sc-label-text{
+    font-size:14.5px;
+    font-weight:500;
+    color:var(--text);
+    line-height:1.2;
+  }
+  .sc-sub{
+    font-size:11px;
+    color:var(--text-dim);
+    margin-top:2px;
+    transition:color .2s ease;
+  }
+  .sc-sub.ok{ color:var(--accent); }
+  .sc-sub.err{ color:var(--danger); }
+
+  .sc-badge{
+    flex:0 0 auto;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:2px;
+    opacity:.85;
+  }
+  .sc-badge svg{ width:26px; height:26px; }
+  .sc-badge span{
+    font-size:8.5px;
+    letter-spacing:.03em;
+    color:var(--text-dim);
+    font-weight:600;
+  }
+
+  .scaptcha-footer{
+    display:flex;
+    justify-content:space-between;
+    padding:8px 16px 12px;
+    border-top:1px solid var(--border);
+  }
+  .scaptcha-footer a{
+    font-size:10.5px;
+    color:var(--text-dim);
+    text-decoration:none;
+    transition:color .15s ease;
+  }
+  .scaptcha-footer a:hover{ color:var(--accent); }
+
+  /* honeypot - hidden strictly via CSS, still in normal DOM/tab flow for real users but invisible */
+  .sc-hp{
+    opacity:0 !important;
+    position:absolute !important;
+    top:-9999px !important;
+    left:-9999px !important;
+    height:0 !important;
+    width:0 !important;
+    pointer-events:none;
+  }
+
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  @keyframes shake{
+    0%,100%{ transform:translateX(0); }
+    25%{ transform:translateX(-4px); }
+    75%{ transform:translateX(4px); }
+  }
+
+  /* ============ MODAL / LEVEL 2 ============ */
+  .sc-overlay{
+    position:fixed; inset:0;
+    background:rgba(2,6,23,0.72);
+    backdrop-filter:blur(4px);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:999;
+    padding:20px;
+  }
+  .sc-overlay.show{ display:flex; }
+
+  .sc-modal{
+    width:320px;
+    max-width:100%;
+    background:linear-gradient(180deg, rgba(23,35,61,0.95), rgba(15,23,42,0.97));
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    box-shadow:0 20px 60px rgba(0,0,0,0.5);
+    padding:16px;
+    animation:pop .18s ease;
+  }
+  @keyframes pop{ from{ transform:scale(.94); opacity:0; } to{ transform:scale(1); opacity:1; } }
+
+  .sc-modal-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:10px;
+  }
+  .sc-modal-head h3{
+    margin:0;
+    font-size:13.5px;
+    font-weight:600;
+    color:var(--text);
+  }
+  .sc-modal-head .sc-close{
+    cursor:pointer;
+    color:var(--text-dim);
+    font-size:16px;
+    line-height:1;
+    background:none;
+    border:none;
+    padding:2px 6px;
+  }
+  .sc-modal-head .sc-close:hover{ color:var(--text); }
+
+  .sc-instructions{
+    font-size:11.5px;
+    color:var(--text-dim);
+    margin:0 0 10px;
+  }
+
+  .sc-court{
+    position:relative;
+    height:210px;
+    border-radius:10px;
+    background:
+      radial-gradient(circle at 50% 100%, rgba(16,185,129,0.10), transparent 60%),
+      var(--bg-soft);
+    border:1px dashed var(--border);
+    overflow:hidden;
+    touch-action:none;
+  }
+
+  .sc-hoop{
+    position:absolute;
+    top:14px;
+    left:50%;
+    transform:translateX(-50%);
+    width:84px;
+    height:84px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .sc-hoop img, .sc-hoop .sc-fallback{
+    width:100%;
+    height:100%;
+    object-fit:contain;
+    pointer-events:none;
+    -webkit-user-drag:none;
+  }
+  /* the actual scoring zone: the rim opening, not the whole hoop image */
+  .sc-hoop-zone{
+    position:absolute;
+    left:50%;
+    top:58%;
+    transform:translate(-50%,-50%);
+    width:46px;
+    height:20px;
+    border-radius:50%;
+  }
+
+  .sc-ball{
+    position:absolute;
+    left:20px;
+    bottom:14px;
+    width:52px;
+    height:52px;
+    cursor:grab;
+    touch-action:none;
+    transition:left .35s cubic-bezier(.34,1.56,.64,1), bottom .35s cubic-bezier(.34,1.56,.64,1), opacity .25s ease, transform .2s ease;
+    z-index:5;
+  }
+  .sc-ball.dragging{
+    cursor:grabbing;
+    transition:none;
+    filter:drop-shadow(0 6px 10px rgba(0,0,0,0.4));
+  }
+  .sc-ball img, .sc-ball .sc-fallback{
+    width:100%;
+    height:100%;
+    object-fit:contain;
+    pointer-events:none;
+    -webkit-user-drag:none;
+  }
+  .sc-fallback{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:34px;
+  }
+  .sc-hoop .sc-fallback{ font-size:46px; }
+
+  .sc-ball.success{
+    opacity:0;
+    transform:scale(.4);
+  }
+
+  .sc-court-msg{
+    position:absolute;
+    bottom:8px;
+    left:0; right:0;
+    text-align:center;
+    font-size:10.5px;
+    color:var(--text-dim);
+    pointer-events:none;
+  }
+
+  .sc-verified-flash{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-direction:column;
+    gap:8px;
+    background:rgba(15,23,42,0.9);
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .25s ease;
+  }
+  .sc-verified-flash.show{ opacity:1; pointer-events:all; }
+  .sc-verified-flash svg{ width:40px; height:40px; stroke:var(--accent); }
+  .sc-verified-flash span{ font-size:12.5px; color:var(--accent); font-weight:600; }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:.001s !important; transition-duration:.001s !important; }
+  }
+</style>
+</head>
+<body>
+
+<form id="scForm" autocomplete="off">
+  <div class="scaptcha" id="scWidget">
+    <div class="scaptcha-body">
+      <!-- Honeypot: real users never see or fill this. Bots that auto-fill every input will. -->
+      <label class="sc-hp" aria-hidden="true">
+        Leave this field empty
+        <input type="text" name="scaptcha_hp" id="scHoneypot" tabindex="-1" autocomplete="off">
+      </label>
+
+      <div class="sc-box" id="scBox" role="checkbox" aria-checked="false" tabindex="0">
+        <div class="sc-spinner"></div>
+        <svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg>
+      </div>
+
+      <div class="sc-label" id="scLabelWrap">
+        <div class="sc-label-text">I am human</div>
+        <div class="sc-sub" id="scSub">S-Captcha</div>
+      </div>
+
+      <div class="sc-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="1.8">
+          <path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/>
+          <path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>SECURE</span>
+      </div>
+    </div>
+
+    <div class="scaptcha-footer">
+      <a href="#">Privacy</a>
+      <a href="#">Terms</a>
+      <a href="#">About</a>
+    </div>
+  </div>
+
+  <input type="hidden" name="scaptcha_token" id="scToken" value="">
+</form>
+
+<!-- Level 2 challenge -->
+<div class="sc-overlay" id="scOverlay">
+  <div class="sc-modal">
+    <div class="sc-modal-head">
+      <h3>Quick visual check</h3>
+      <button type="button" class="sc-close" id="scClose" aria-label="Close">&times;</button>
+    </div>
+    <p class="sc-instructions">Drag the ball into the hoop to verify you're human.</p>
+
+    <div class="sc-court" id="scCourt">
+      <div class="sc-hoop">
+        <img src="1.png" alt="" id="scHoopImg" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        <div class="sc-fallback" style="display:none;">🧺</div>
+        <div class="sc-hoop-zone" id="scZone"></div>
+      </div>
+
+      <div class="sc-ball" id="scBall">
+        <img src="0.png" alt="" id="scBallImg" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        <div class="sc-fallback" style="display:none;">🏀</div>
+      </div>
+
+      <div class="sc-court-msg" id="scCourtMsg">drag &amp; drop the ball →</div>
+
+      <div class="sc-verified-flash" id="scFlash">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l6 6L20 6"/></svg>
+        <span>Verified — swish!</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- state ---------------- */
+  var mousePoints = [];       // {x,y,t}
+  var MAX_POINTS = 60;
+  var verified = false;
+  var checking = false;
+
+  var scBox      = document.getElementById('scBox');
+  var scSub      = document.getElementById('scSub');
+  var scHoneypot = document.getElementById('scHoneypot');
+  var scToken    = document.getElementById('scToken');
+  var scLabelWrap= document.getElementById('scLabelWrap');
+  var scOverlay  = document.getElementById('scOverlay');
+  var scClose    = document.getElementById('scClose');
+  var scBall     = document.getElementById('scBall');
+  var scZone     = document.getElementById('scZone');
+  var scCourt    = document.getElementById('scCourt');
+  var scCourtMsg = document.getElementById('scCourtMsg');
+  var scFlash    = document.getElementById('scFlash');
+
+  /* ---------------- Layer 1: honeypot ---------------- */
+  function honeypotTripped(){
+    return scHoneypot.value.trim().length > 0;
+  }
+
+  /* ---------------- Layer 1: mouse trajectory tracking ---------------- */
+  document.addEventListener('mousemove', function(e){
+    mousePoints.push({ x: e.clientX, y: e.clientY, t: Date.now() });
+    if (mousePoints.length > MAX_POINTS) mousePoints.shift();
+  }, { passive:true });
+
+  // Heuristic: real humans produce a curved, variable-speed path.
+  // Bots (or scripted dispatchEvent calls) tend to produce 0 points,
+  // perfectly straight lines, or perfectly uniform velocity.
+  function looksHuman(){
+    if (mousePoints.length < 8) return false;
+
+    var pts = mousePoints;
+    var straightCount = 0;
+    var velocities = [];
+
+    for (var i = 2; i < pts.length; i++){
+      var a = pts[i-2], b = pts[i-1], c = pts[i];
+
+      // cross product of (b-a) and (c-b) ~ 0 means collinear (straight line)
+      var v1x = b.x - a.x, v1y = b.y - a.y;
+      var v2x = c.x - b.x, v2y = c.y - b.y;
+      var cross = v1x * v2y - v1y * v2x;
+      if (Math.abs(cross) < 0.6) straightCount++;
+
+      var dt = Math.max(1, c.t - b.t);
+      var dist = Math.hypot(c.x - b.x, c.y - b.y);
+      velocities.push(dist / dt);
+    }
+
+    var straightRatio = straightCount / (pts.length - 2);
+
+    // variance of velocity -- bots that move in fixed steps have ~0 variance
+    var mean = velocities.reduce(function(s,v){return s+v;}, 0) / velocities.length;
+    var variance = velocities.reduce(function(s,v){return s + Math.pow(v-mean,2);}, 0) / velocities.length;
+
+    if (straightRatio > 0.92) return false;   // almost perfectly straight path
+    if (variance < 0.0008) return false;      // suspiciously uniform velocity
+    return true;
+  }
+
+  /* ---------------- checkbox interaction ---------------- */
+  function setSub(text, cls){
+    scSub.textContent = text;
+    scSub.className = 'sc-sub' + (cls ? ' ' + cls : '');
+  }
+
+  function markVerified(){
+    verified = true;
+    scBox.classList.remove('loading','failed');
+    scBox.classList.add('checked');
+    scBox.setAttribute('aria-checked','true');
+    setSub('Verified', 'ok');
+    scToken.value = generateToken();
+  }
+
+  function markFailedAttempt(msg){
+    scBox.classList.remove('loading','checked');
+    scBox.classList.add('failed');
+    setSub(msg, 'err');
+    setTimeout(function(){ scBox.classList.remove('failed'); }, 400);
+  }
+
+  function generateToken(){
+    var arr = new Uint8Array(16);
+    (window.crypto || window.msCrypto).getRandomValues(arr);
+    return Array.prototype.map.call(arr, function(b){ return b.toString(16).padStart(2,'0'); }).join('');
+  }
+
+  function handleCheck(){
+    if (verified || checking) return;
+
+    // Layer 1 — honeypot: hard fail, no puzzle, block submission outright.
+    if (honeypotTripped()){
+      checking = false;
+      scBox.classList.remove('loading');
+      markFailedAttempt('Bot activity detected');
+      scToken.value = '';
+      // lock the widget
+      scBox.style.pointerEvents = 'none';
+      scLabelWrap.style.opacity = '.5';
+      return;
+    }
+
+    checking = true;
+    scBox.classList.add('loading');
+    setSub('Verifying…');
+
+    setTimeout(function(){
+      checking = false;
+      scBox.classList.remove('loading');
+
+      if (looksHuman()){
+        markVerified();
+      } else {
+        setSub('Extra check needed', 'err');
+        openChallenge();
+      }
+    }, 450); // brief delay to feel like a real check, not a UX requirement
+  }
+
+  scBox.addEventListener('click', handleCheck);
+  scLabelWrap.addEventListener('click', handleCheck);
+  scBox.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); handleCheck(); }
+  });
+
+  /* ---------------- Level 2: drag & drop basketball ---------------- */
+  var dragging = false;
+  var startLeft, startBottom, startX, startY, pointerId;
+
+  function ballStartRect(){
+    return { left: 20, bottom: 14 };
+  }
+
+  function resetBall(){
+    var s = ballStartRect();
+    scBall.style.left = s.left + 'px';
+    scBall.style.bottom = s.bottom + 'px';
+    scBall.classList.remove('success');
+  }
+
+  function openChallenge(){
+    resetBall();
+    scFlash.classList.remove('show');
+    scOverlay.classList.add('show');
+    scCourtMsg.textContent = 'drag & drop the ball →';
+  }
+
+  function closeChallenge(){
+    scOverlay.classList.remove('show');
+  }
+
+  scClose.addEventListener('click', closeChallenge);
+  scOverlay.addEventListener('click', function(e){
+    if (e.target === scOverlay) closeChallenge();
+  });
+
+  function pointFromEvent(e){
+    if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    return { x: e.clientX, y: e.clientY };
+  }
+
+  function onPointerDown(e){
+    if (verified) return;
+    dragging = true;
+    scBall.classList.add('dragging');
+    var p = pointFromEvent(e);
+    startX = p.x; startY = p.y;
+
+    var rect = scBall.getBoundingClientRect();
+    var courtRect = scCourt.getBoundingClientRect();
+    startLeft = rect.left - courtRect.left;
+    startBottom = courtRect.bottom - rect.bottom;
+
+    if (e.pointerId !== undefined){
+      pointerId = e.pointerId;
+      try{ scBall.setPointerCapture(pointerId); }catch(err){}
+    }
+    e.preventDefault();
+  }
+
+  function onPointerMove(e){
+    if (!dragging) return;
+    var p = pointFromEvent(e);
+    var dx = p.x - startX;
+    var dy = p.y - startY;
+    scBall.style.left = (startLeft + dx) + 'px';
+    scBall.style.bottom = (startBottom - dy) + 'px';
+    e.preventDefault();
+  }
+
+  function onPointerUp(e){
+    if (!dragging) return;
+    dragging = false;
+    scBall.classList.remove('dragging');
+    if (pointerId !== undefined){
+      try{ scBall.releasePointerCapture(pointerId); }catch(err){}
+    }
+
+    var ballRect = scBall.getBoundingClientRect();
+    var zoneRect = scZone.getBoundingClientRect();
+    var ballCenter = { x: ballRect.left + ballRect.width/2, y: ballRect.top + ballRect.height/2 };
+
+    var hit = ballCenter.x > zoneRect.left && ballCenter.x < zoneRect.right &&
+              ballCenter.y > zoneRect.top  && ballCenter.y < zoneRect.bottom;
+
+    if (hit){
+      scBall.classList.add('success');
+      scFlash.classList.add('show');
+      setTimeout(function(){
+        closeChallenge();
+        markVerified();
+      }, 650);
+    } else {
+      resetBall();
+      scCourtMsg.textContent = 'not quite — try again';
+    }
+  }
+
+  scBall.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('pointermove', onPointerMove, { passive:false });
+  window.addEventListener('pointerup', onPointerUp);
+
+  // touch fallback for browsers without pointer events
+  scBall.addEventListener('touchstart', onPointerDown, { passive:false });
+  window.addEventListener('touchmove', onPointerMove, { passive:false });
+  window.addEventListener('touchend', onPointerUp);
+
+  /* ---------------- form submit guard ---------------- */
+  document.getElementById('scForm').addEventListener('submit', function(e){
+    if (!verified || honeypotTripped()){
+      e.preventDefault();
+    }
+  });
+})();
+</script>
+</body>
+</html>
