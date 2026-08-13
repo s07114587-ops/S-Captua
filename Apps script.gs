@@ -7,6 +7,14 @@
 //   installable time-driven trigger — see note at the bottom)
 // =============================================================================
 
+// IPs that are never banned and never logged, regardless of what the
+// client sends. Keep this in sync with `whitelistIps` in widget.js.
+var WHITELIST_IPS = ["2401:4900:b6df:f2d6:2c08:8302:13ab:f640"];
+
+function isWhitelistedIp_(rawIp) {
+  return WHITELIST_IPS.indexOf(rawIp) !== -1;
+}
+
 function hashIp_(rawIp) {
   var rawHash = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, rawIp, Utilities.Charset.UTF_8);
   return rawHash.map(function (b) {
@@ -28,6 +36,11 @@ function doPost(e) {
     var siteUrl = data.website_url || "unknown";
     var rawIp = data.ip || "0.0.0.0";
     var banType = data.ban_type || "temporary"; // "temporary" or "permanent"
+
+    if (isWhitelistedIp_(rawIp)) {
+      return json_({ status: "success", message: "Whitelisted IP — not logged" });
+    }
+
     var encryptedIp = hashIp_(rawIp);
     var now = new Date();
     var formattedTime = Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
@@ -58,6 +71,11 @@ function doGet(e) {
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var rawIp = e.parameter.ip || "0.0.0.0";
+
+    if (isWhitelistedIp_(rawIp)) {
+      return json_({ status: "clear" });
+    }
+
     var encryptedIp = hashIp_(rawIp);
 
     var permSheet = ss.getSheetByName("Permanent_Bans");
