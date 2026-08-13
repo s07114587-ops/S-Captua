@@ -27,14 +27,16 @@
     // Recommend pointing this at the real script.google.com/macros/.../exec
     // URL rather than a tinyurl redirect — one less hop, one less thing that
     // can break if the short link ever expires or gets rate-limited.
-    dbEndpoint: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-db-endpoint")) || "https://tinyurl.com/3da9m439",
+    dbEndpoint: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-db-endpoint")) || "https://script.google.com/macros/s/AKfycbwsnnrJMh5Svw378pmlwqaKNz2HHuw5r2hbuzFDWAgeGNd0ctw3mPf-sbvGOrIC5HcE/exec",
     // How long the server ban-check is allowed to delay first render for a
     // clean visitor before we give up waiting and show the widget anyway.
     serverCheckTimeoutMs: 1500,
     tier1Ms: 5 * 60 * 1000,           // 1st offense — 5 minutes
     tier2Ms: 12 * 60 * 60 * 1000,     // 2nd+ offense — 12 hours
     tier2ToPermanentCount: 3,         // 3rd time hitting tier2 => lifetime
-    challengeAttempts: 1,             // only 1 shot at the basketball game before a ban fires
+    challengeAttempts: 1,             // only 1 shot at the challenge before a ban fires
+    // "lettergrid" = tap the c-1.png tile game, "basketball" = the drag-the-ball game
+    challengeType: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-challenge-type")) || "lettergrid",
     banPages: {
       tier1: "/to-dear-bot-or-hacker.html",
       tier2: "/you-ban-for-12hours.html",
@@ -45,7 +47,9 @@
   var I18N = {
     en: { human: "I am human", verify: "S-Captcha", verified: "Verified", extra: "Extra check needed",
           checkTitle: "Quick visual check", dragHint: "Drag the ball into the hoop to verify you're human.",
-          sliderHint: "Slide the piece into place to verify you're human.", swish: "Verified — swish!",
+          sliderHint: "Slide the piece into place to verify you're human.",
+          gridHint: "Tap only the highlighted letters. Any other tile ends the check.",
+          swish: "Verified — swish!", solved: "Verified!",
           tryAgain: "not quite — try again", triesLeft: "tries left", privacy: "Privacy", terms: "Terms", about: "About" }
   };
   function t(key) { var d = I18N[CFG.lang] || I18N.en; return d[key] || I18N.en[key] || key; }
@@ -93,12 +97,14 @@
   .sc-overlay{ position:fixed; inset:0; background:rgba(2,6,23,0.8); backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; z-index:999999; padding:20px; }
   .sc-overlay.show{ display:flex; }
   .sc-modal{ width:320px; background:linear-gradient(180deg, rgba(23,35,61,0.98), rgba(15,23,42,0.98)); border:1px solid var(--border); border-radius:var(--radius); box-shadow:0 20px 60px rgba(0,0,0,0.6); padding:16px; font-family:'Segoe UI',sans-serif; }
+  .sc-modal.sc-modal-wide{ width:360px; }
   .sc-modal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; color:#fff; }
   .sc-modal-head h3{ margin:0; font-size:13.5px; }
   .sc-close{ cursor:pointer; color:var(--text-dim); font-size:18px; background:none; border:none; }
   .sc-instructions{ font-size:11.5px; color:var(--text-dim); margin:0 0 10px; }
 
   .sc-court{ position:relative; height:220px; border-radius:10px; background:radial-gradient(circle at 50% 100%, rgba(16,185,129,0.12), transparent 60%), var(--bg-soft); border:1px dashed var(--border); overflow:hidden; touch-action:none; }
+  .sc-court.sc-court-auto{ height:auto; overflow:visible; }
 
   .sc-hoop{ position:absolute; top:10px; left:50%; transform:translateX(-50%); width:90px; height:90px; display:flex; align-items:center; justify-content:center; }
   .sc-hoop img{ width:100%; height:100%; object-fit:contain; pointer-events:none; }
@@ -112,6 +118,19 @@
   .sc-slider-target{ position:absolute; top:0; bottom:0; width:46px; border-radius:10px; background:rgba(16,185,129,0.15); border:2px dashed rgba(16,185,129,0.5); }
   .sc-slider-piece{ position:absolute; top:-2px; left:0; width:46px; height:46px; border-radius:10px; background:var(--accent); box-shadow:0 4px 14px var(--accent-glow); cursor:grab; touch-action:none; display:flex; align-items:center; justify-content:center; font-size:18px; color:#0f172a; font-weight:700; }
   .sc-slider-piece.dragging{ cursor:grabbing; }
+
+  .sc-grid-wrap{ position:relative; width:100%; padding-top:66.67%; border-radius:10px; overflow:hidden; background:var(--bg-soft); }
+  .sc-grid-wrap img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; pointer-events:none; user-select:none; }
+  .sc-grid-tile{
+    position:absolute; width:15%; height:17%; transform:translate(-50%,-50%);
+    background:transparent; border:2px solid transparent; border-radius:10px; cursor:pointer;
+    padding:0; -webkit-tap-highlight-color:transparent; transition:border-color .15s ease, background .15s ease;
+  }
+  .sc-grid-tile:hover{ border-color:rgba(255,255,255,0.25); }
+  .sc-grid-tile:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .sc-grid-tile.sc-tile-correct{ border-color:var(--accent); background:rgba(16,185,129,0.18); }
+  .sc-grid-tile.sc-tile-wrong{ border-color:var(--danger); background:rgba(244,63,94,0.18); }
+  .sc-grid-tile[disabled]{ cursor:default; }
 
   .sc-fallback{ display:flex; align-items:center; justify-content:center; font-size:30px; user-select:none; }
   .sc-hoop .sc-fallback{ font-size:40px; }
@@ -547,10 +566,19 @@
       scFlash.classList.remove("show");
       scChallengeMount.innerHTML = "";
       scCourtMsg.textContent = "";
-      // Single-attempt basketball challenge: this is the visitor's one
-      // chance to prove human before a ban fires — no retries, no slider.
-      scInstructions.textContent = t("dragHint");
-      mountBasketballChallenge(scChallengeMount, onSolved, onMiss);
+      var scModal = scOverlay.querySelector(".sc-modal");
+      var scCourtEl = wrapper.querySelector("#scCourt");
+      if (CFG.challengeType === "lettergrid") {
+        scModal.classList.add("sc-modal-wide");
+        scCourtEl.classList.add("sc-court-auto");
+        scInstructions.textContent = t("gridHint");
+        mountLetterGridChallenge(scChallengeMount, onSolved, onMiss);
+      } else {
+        scModal.classList.remove("sc-modal-wide");
+        scCourtEl.classList.remove("sc-court-auto");
+        scInstructions.textContent = t("dragHint");
+        mountBasketballChallenge(scChallengeMount, onSolved, onMiss);
+      }
       scOverlay.classList.add("show");
     }
 
@@ -651,6 +679,63 @@
       piece.addEventListener("pointerdown", onDown);
       window.addEventListener("pointermove", onMove, { passive: false });
       window.addEventListener("pointerup", onUp);
+    }
+
+    // Tile-grid challenge using c-1.png. All 9 tiles are clickable (as
+    // requested), but only the tiles marked valid:true below are correct.
+    // One wrong tap ends the attempt via onMiss (same 1-chance/ban path
+    // as the basketball game). Percentages are eyeballed against the
+    // 3x3 layout in c-1.png — nudge x/y here if they ever drift out of
+    // alignment with a re-exported version of that image.
+    var LETTER_GRID_TILES = [
+      { letter: "F", x: 34.8, y: 36.6, valid: false },
+      { letter: "B", x: 50.5, y: 36.6, valid: true },
+      { letter: "H", x: 66.1, y: 36.6, valid: false },
+      { letter: "F", x: 34.8, y: 57.1, valid: false },
+      { letter: "Y", x: 50.5, y: 57.1, valid: true },
+      { letter: "W", x: 66.1, y: 57.1, valid: false },
+      { letter: "D", x: 34.8, y: 77.6, valid: false },
+      { letter: "S", x: 50.5, y: 77.6, valid: false },
+      { letter: "Z", x: 66.1, y: 77.6, valid: false }
+    ];
+
+    function mountLetterGridChallenge(mount, solved, miss) {
+      var neededCount = LETTER_GRID_TILES.filter(function (t2) { return t2.valid; }).length;
+      var collected = 0;
+      var done = false;
+
+      mount.innerHTML = `
+        <div class="sc-grid-wrap" id="scGridWrap">
+          <img src="${CFG.assetBase}/c-1.png" alt="" onerror="this.style.display='none';">
+        </div>
+      `;
+      var wrap = mount.querySelector("#scGridWrap");
+
+      LETTER_GRID_TILES.forEach(function (tile, idx) {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "sc-grid-tile";
+        btn.setAttribute("aria-label", "tile " + tile.letter);
+        btn.style.left = tile.x + "%";
+        btn.style.top = tile.y + "%";
+        btn.addEventListener("click", function () {
+          if (done) return;
+          if (tile.valid) {
+            btn.classList.add("sc-tile-correct");
+            btn.disabled = true;
+            collected++;
+            if (collected >= neededCount) {
+              done = true;
+              solved();
+            }
+          } else {
+            btn.classList.add("sc-tile-wrong");
+            done = true;
+            miss();
+          }
+        });
+        wrap.appendChild(btn);
+      });
     }
 
     var formEl = wrapper.closest("form") || document.querySelector("form");
