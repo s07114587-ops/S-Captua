@@ -41,7 +41,16 @@
       tier1: "/to-dear-bot-or-hacker.html",
       tier2: "/you-ban-for-12hours.html",
       permanent: "/you-ban-for-lifetime.html"
-    }
+    },
+    // IPs in this list are never banned and skip the challenge entirely —
+    // meant for the site owner / admins / trusted testers, not end users.
+    // Add more via data-whitelist-ips="ip1,ip2,ip3" (comma separated).
+    whitelistIps: (function () {
+      var base = ["2401:4900:b6df:f2d6:2c08:8302:13ab:f640"];
+      var extra = (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-whitelist-ips")) || "";
+      var extraList = extra.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+      return base.concat(extraList);
+    })()
   };
 
   var I18N = {
@@ -210,7 +219,10 @@
   function getClientIp() {
     var cached = sessionStorage.getItem("scaptcha_client_ip");
     if (cached) return Promise.resolve(cached);
-    return fetch("https://api.ipify.org?format=json")
+    // api64 returns IPv6 when the client has one, falls back to IPv4
+    // otherwise — plain api.ipify.org is IPv4-only and would never match
+    // an IPv6 entry in the whitelist/ban lists.
+    return fetch("https://api64.ipify.org?format=json")
       .then(function (r) { return r.json(); })
       .then(function (j) {
         sessionStorage.setItem("scaptcha_client_ip", j.ip);
@@ -218,6 +230,29 @@
       })
       .catch(function () { return "unknown"; });
   }
+
+  var isWhitelistedClient = false;
+
+  function isWhitelisted(ip) {
+    return CFG.whitelistIps.indexOf(ip) !== -1;
+  }
+
+  function clearLocalBanState() {
+    ["scaptcha_offense_count", "scaptcha_tier2_count", "scaptcha_permanent",
+     "scaptcha_ban_until", "scaptcha_ban_tier"].forEach(function (k) { localStorage.removeItem(k); });
+    ["scaptcha_permanent", "scaptcha_ban_until", "scaptcha_ban_tier"].forEach(function (k) {
+      document.cookie = k + "=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    });
+  }
+
+  // Resolved once at load; whitelisted visitors get their local ban state
+  // wiped immediately (covers being whitelisted after an earlier ban) and
+  // every later check/ban call short-circuits against this flag.
+  var whitelistCheckPromise = getClientIp().then(function (ip) {
+    isWhitelistedClient = isWhitelisted(ip);
+    if (isWhitelistedClient) clearLocalBanState();
+    return isWhitelistedClient;
+  });
 
   function postToDb(payload) {
     if (!CFG.dbEndpoint) return Promise.resolve(null);
@@ -239,6 +274,7 @@
   }
 
   function triggerBan(reason) {
+    if (isWhitelistedClient) return; // never ban a whitelisted IP, full stop
     if (localStorage.getItem("scaptcha_permanent") === "1") {
       redirectToTier("permanent");
       return;
@@ -525,6 +561,7 @@
     }
 
     function handleCheck() {
+      if (isWhitelistedClient) { markVerified(); return; } // god mode: skip everything
       if (checkBanStatus()) return;
       if (verified || checking) return;
       if (scHp1.value.trim().length > 0 || scHp2.value.trim().length > 0) { triggerBan("honeypot_on_submit"); return; }
@@ -764,10 +801,20 @@
   }
 
   function boot() {
-    if (checkBanStatus()) return; // instant local check, no network wait
-    checkServerBanStatusAsync().then(function (wasBanned) {
-      if (wasBanned) return; // redirect already fired
-      mountAll();
+    // Don't let a slow/unreachable IP lookup stall real visitors — if the
+    // whitelist check hasn't resolved fast, fall through to the normal
+    // flow. isWhitelistedClient still flips to true if it resolves later,
+    // so triggerBan/handleCheck stay safe even after this timeout.
+    Promise.race([
+      whitelistCheckPromise,
+      new Promise(function (resolve) { setTimeout(function () { resolve(false); }, CFG.serverCheckTimeoutMs); })
+    ]).then(function (whitelisted) {
+      if (whitelisted) { mountAll(); return; } // skip all ban checks entirely
+      if (checkBanStatus()) return; // instant local check, no network wait
+      checkServerBanStatusAsync().then(function (wasBanned) {
+        if (wasBanned) return; // redirect already fired
+        mountAll();
+      });
     });
   }
 
