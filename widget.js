@@ -31,9 +31,10 @@
     // How long the server ban-check is allowed to delay first render for a
     // clean visitor before we give up waiting and show the widget anyway.
     serverCheckTimeoutMs: 1500,
-    tier1Ms: 30 * 1000,               // 1st offense
-    tier2Ms: 12 * 60 * 60 * 1000,     // 2nd+ offense
+    tier1Ms: 5 * 60 * 1000,           // 1st offense — 5 minutes
+    tier2Ms: 12 * 60 * 60 * 1000,     // 2nd+ offense — 12 hours
     tier2ToPermanentCount: 3,         // 3rd time hitting tier2 => lifetime
+    challengeAttempts: 1,             // only 1 shot at the basketball game before a ban fires
     banPages: {
       tier1: "/to-dear-bot-or-hacker.html",
       tier2: "/you-ban-for-12hours.html",
@@ -531,8 +532,8 @@
 
     function onMiss() {
       missCount++;
-      if (missCount >= 3) { triggerBan("challenge_fail_3x"); return true; }
-      scCourtMsg.textContent = t("tryAgain") + " (" + (3 - missCount) + " " + t("triesLeft") + ")";
+      if (missCount >= CFG.challengeAttempts) { triggerBan("challenge_missed"); return true; }
+      scCourtMsg.textContent = t("tryAgain") + " (" + (CFG.challengeAttempts - missCount) + " " + t("triesLeft") + ")";
       return false;
     }
 
@@ -546,10 +547,10 @@
       scFlash.classList.remove("show");
       scChallengeMount.innerHTML = "";
       scCourtMsg.textContent = "";
-      var useSlider = Math.random() < 0.5;
-      scInstructions.textContent = useSlider ? t("sliderHint") : t("dragHint");
-      if (useSlider) mountSliderChallenge(scChallengeMount, onSolved, onMiss);
-      else mountBasketballChallenge(scChallengeMount, onSolved, onMiss);
+      // Single-attempt basketball challenge: this is the visitor's one
+      // chance to prove human before a ban fires — no retries, no slider.
+      scInstructions.textContent = t("dragHint");
+      mountBasketballChallenge(scChallengeMount, onSolved, onMiss);
       scOverlay.classList.add("show");
     }
 
