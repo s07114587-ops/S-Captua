@@ -114,7 +114,8 @@ HTML_CONTENT = """
     </div>
 
     <script>
-        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxfwklXCDO9rSAaslH1lIYsMllc_sL-0QdhuTvD-TiHPcgo8EkGir3oY82RCRKku-1-/exec";
+        // ✅ Updated Google Apps Script Web App URL
+        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwsnnrJMh5Svw378pmlwqaKNz2HHuw5r2hbuzFDWAgeGNd0ctw3mPf-sbvGOrIC5HcE/exec";
 
         function generateCode() {
             const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -160,7 +161,7 @@ HTML_CONTENT = """
                     tbody.innerHTML = "<tr><td colspan='3' style='text-align:center; color:#888;'>No active bans found for this site! 🎉</td></tr>";
                 }
             } catch(e) {
-                tbody.innerHTML = "<tr><td colspan='3' style='text-align:center; color:#ff007f;'>Error loading logs!</td></tr>";
+                tbody.innerHTML = "<tr><td colspan='3' style='text-align:center; color:#ff007f;'>Error loading logs! Check Google Apps Script setup.</td></tr>";
             }
         }
 
