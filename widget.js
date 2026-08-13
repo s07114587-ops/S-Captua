@@ -1,14 +1,20 @@
 /*!
- * S-Captcha Widget v2 — Hardened Build with Basketball Game
+ * S-Captcha Widget v2 — hardened build
+ * -------------------------------------------------------------------------
+ * IMPORTANT (read this before deploying):
+ * This script can only ever be a FRONT-END signal. Anything that runs in
+ * the browser can be inspected, monkey-patched, or skipped entirely by a
+ * bot that submits your form via a raw HTTP request. The only way this
+ * actually stops bots is if your SERVER calls the verify endpoint below
+ * with the token + your secret key before accepting the form submission,
+ * exactly like reCAPTCHA/hCaptcha/Turnstile do. See "SERVER-SIDE CONTRACT"
+ * at the bottom of this file for the API shape you need to implement.
+ * Everything above that line just makes the token harder to forge and
+ * gives your backend better signal to score — it is not itself a wall.
  * -------------------------------------------------------------------------
  */
 (function () {
   "use strict";
-
-  // Native Function Caching (বট যাতে ওভাররাইড না করতে পারে)
-  var _now = Date.now;
-  var _btoa = window.btoa;
-  var _fetch = window.fetch;
 
   var SCRIPT_TAG = document.currentScript;
   var CFG = {
@@ -16,10 +22,23 @@
     theme: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-theme")) || "dark",
     lang: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-lang")) || "en",
     verifyEndpoint: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-verify-endpoint")) || null,
-    databaseEndpoint: "https://tinyurl.com/3da9m439", 
-    banBaseMs: 5000,          
-    banMaxMs: 30 * 60 * 1000, 
-    assetBase: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-asset-base")) || "https://www.scaptua.duckdns.org"
+    assetBase: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-asset-base")) || "https://www.scaptua.duckdns.org",
+    // Google Apps Script Web App URL that logs bans / answers ban checks.
+    // Recommend pointing this at the real script.google.com/macros/.../exec
+    // URL rather than a tinyurl redirect — one less hop, one less thing that
+    // can break if the short link ever expires or gets rate-limited.
+    dbEndpoint: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-db-endpoint")) || "https://tinyurl.com/3da9m439",
+    // How long the server ban-check is allowed to delay first render for a
+    // clean visitor before we give up waiting and show the widget anyway.
+    serverCheckTimeoutMs: 1500,
+    tier1Ms: 30 * 1000,               // 1st offense
+    tier2Ms: 12 * 60 * 60 * 1000,     // 2nd+ offense
+    tier2ToPermanentCount: 3,         // 3rd time hitting tier2 => lifetime
+    banPages: {
+      tier1: "/to-dear-bot-or-hacker.html",
+      tier2: "/you-ban-for-12hours.html",
+      permanent: "/you-ban-for-lifetime.html"
+    }
   };
 
   var I18N = {
@@ -30,7 +49,6 @@
   };
   function t(key) { var d = I18N[CFG.lang] || I18N.en; return d[key] || I18N.en[key] || key; }
 
-  // CSS Styles (তোর বাস্কেটবল গেমের ডিজাইন সহ)
   var css = `
   :root{
     --bg:#0f172a; --bg-soft:#111c34; --panel:rgba(17,28,52,0.92);
@@ -51,6 +69,7 @@
     cursor:pointer; transition:all .2s ease; position:relative;
   }
   .sc-box:hover{ border-color:var(--accent); }
+  .sc-box:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
   .sc-box.checked{ border-color:var(--accent); background:var(--accent); box-shadow:0 0 14px var(--accent-glow); }
   .sc-box.failed{ border-color:var(--danger); animation:scShake .35s ease; }
   .sc-box svg{ width:16px; height:16px; stroke:#0f172a; stroke-width:3; fill:none; stroke-linecap:round; stroke-linejoin:round; opacity:0; transform:scale(.5); transition:all .15s ease; }
@@ -70,7 +89,6 @@
   .scaptcha-footer a{ font-size:10.5px; color:var(--text-dim); text-decoration:none; }
   .sc-hp{ opacity:0!important; position:absolute!important; top:-9999px!important; left:-9999px!important; height:0!important; width:0!important; pointer-events:none; }
 
-  /* 🏀 Basketball Modal CSS */
   .sc-overlay{ position:fixed; inset:0; background:rgba(2,6,23,0.8); backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; z-index:999999; padding:20px; }
   .sc-overlay.show{ display:flex; }
   .sc-modal{ width:320px; background:linear-gradient(180deg, rgba(23,35,61,0.98), rgba(15,23,42,0.98)); border:1px solid var(--border); border-radius:var(--radius); box-shadow:0 20px 60px rgba(0,0,0,0.6); padding:16px; font-family:'Segoe UI',sans-serif; }
@@ -80,6 +98,7 @@
   .sc-instructions{ font-size:11.5px; color:var(--text-dim); margin:0 0 10px; }
 
   .sc-court{ position:relative; height:220px; border-radius:10px; background:radial-gradient(circle at 50% 100%, rgba(16,185,129,0.12), transparent 60%), var(--bg-soft); border:1px dashed var(--border); overflow:hidden; touch-action:none; }
+
   .sc-hoop{ position:absolute; top:10px; left:50%; transform:translateX(-50%); width:90px; height:90px; display:flex; align-items:center; justify-content:center; }
   .sc-hoop img{ width:100%; height:100%; object-fit:contain; pointer-events:none; }
   .sc-hoop-zone{ position:absolute; left:50%; top:60%; transform:translate(-50%,-50%); width:40px; height:20px; border-radius:50%; }
@@ -87,6 +106,15 @@
   .sc-ball{ position:absolute; left:20px; bottom:25px; width:45px; height:45px; cursor:grab; touch-action:none; transition:left .35s cubic-bezier(.34,1.56,.64,1), bottom .35s cubic-bezier(.34,1.56,.64,1), opacity .25s ease, transform .2s ease; z-index:10; }
   .sc-ball img{ width:100%; height:100%; object-fit:contain; pointer-events:none; }
   .sc-ball.dragging{ cursor:grabbing; transition:none; filter:drop-shadow(0 6px 10px rgba(0,0,0,0.4)); }
+
+  .sc-slider-track{ position:absolute; left:20px; right:20px; top:50%; transform:translateY(-50%); height:46px; border-radius:10px; background:rgba(255,255,255,0.04); border:1px solid var(--border); }
+  .sc-slider-target{ position:absolute; top:0; bottom:0; width:46px; border-radius:10px; background:rgba(16,185,129,0.15); border:2px dashed rgba(16,185,129,0.5); }
+  .sc-slider-piece{ position:absolute; top:-2px; left:0; width:46px; height:46px; border-radius:10px; background:var(--accent); box-shadow:0 4px 14px var(--accent-glow); cursor:grab; touch-action:none; display:flex; align-items:center; justify-content:center; font-size:18px; color:#0f172a; font-weight:700; }
+  .sc-slider-piece.dragging{ cursor:grabbing; }
+
+  .sc-fallback{ display:flex; align-items:center; justify-content:center; font-size:30px; user-select:none; }
+  .sc-hoop .sc-fallback{ font-size:40px; }
+  .sc-ball.success{ opacity:0; transform:scale(.4); }
   .sc-court-msg{ position:absolute; bottom:6px; left:0; right:0; text-align:center; font-size:11px; color:var(--text-dim); pointer-events:none; }
 
   .sc-verified-flash{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px; background:rgba(15,23,42,0.92); opacity:0; pointer-events:none; transition:opacity .25s ease; z-index:20; }
@@ -102,20 +130,13 @@
   styleTag.textContent = css;
   document.head.appendChild(styleTag);
 
-  // Ban Mechanism
-  function sendBanToDatabase(reason, banType) {
-    if (!CFG.databaseEndpoint) return;
-    try {
-      _fetch(CFG.databaseEndpoint, {
-        method: "POST", mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ website_url: window.location.hostname, ip: "client-auto", ban_type: banType || "temporary", reason: reason })
-      }).catch(function () {});
-    } catch (e) {}
-  }
-
+  // ---------------------------------------------------------------------
+  // Ban store: localStorage + cookie fallback (a bot script that only
+  // clears one of the two still gets caught by the other; still trivial
+  // for a determined attacker to clear both, hence the server contract).
+  // ---------------------------------------------------------------------
   function setCookie(name, value, ms) {
-    var expires = new Date(_now() + ms).toUTCString();
+    var expires = new Date(Date.now() + ms).toUTCString();
     document.cookie = name + "=" + encodeURIComponent(value) + "; expires=" + expires + "; path=/; SameSite=Lax";
   }
   function getCookie(name) {
@@ -123,77 +144,219 @@
     return m ? decodeURIComponent(m[1]) : null;
   }
 
-  function redirectToBan(banType) {
-    var url = CFG.assetBase;
-    if (banType === "permanent") url += "/you-ban-for-lifetime.html";
-    else if (banType === "temporary") url += "/you-ban-for-12-hours.html";
-    else url += "/to-dear-bot-or-hacker.html";
-    window.location.href = url;
+  function redirectToTier(tier) {
+    var path = CFG.banPages[tier] || CFG.banPages.tier1;
+    window.location.href = CFG.assetBase + path;
   }
 
-  function getOffenseCount() { return parseInt(localStorage.getItem("scaptcha_offense_count") || "0", 10) || 0; }
+  function getOffenseCount() {
+    var n = parseInt(localStorage.getItem("scaptcha_offense_count") || "0", 10);
+    return isNaN(n) ? 0 : n;
+  }
   function bumpOffenseCount() {
     var n = getOffenseCount() + 1;
     localStorage.setItem("scaptcha_offense_count", String(n));
     return n;
   }
-
-  function triggerBan(reason) {
-    var offense = bumpOffenseCount();
-    var duration = Math.min(CFG.banBaseMs * Math.pow(2, offense - 1), CFG.banMaxMs);
-    var banUntil = _now() + duration;
-    localStorage.setItem("scaptcha_ban_until", String(banUntil));
-    localStorage.setItem("scaptcha_ban_reason", reason || "unknown");
-    setCookie("scaptcha_ban_until", String(banUntil), duration);
-
-    var isPermanent = offense >= 5 ? "permanent" : "temporary";
-    sendBanToDatabase(reason, isPermanent);
-    
-    setTimeout(function() {
-      if (reason.includes("honeypot") || reason === "rapid_click" || reason === "dom_tampering" || reason === "fake_event") {
-         redirectToBan("hacker");
-      } else {
-         redirectToBan(isPermanent);
-      }
-    }, 500);
+  function getTier2Count() {
+    var n = parseInt(localStorage.getItem("scaptcha_tier2_count") || "0", 10);
+    return isNaN(n) ? 0 : n;
+  }
+  function bumpTier2Count() {
+    var n = getTier2Count() + 1;
+    localStorage.setItem("scaptcha_tier2_count", String(n));
+    return n;
   }
 
-  function checkBanStatus() {
+  function persistBan(tier, durationMs) {
+    if (tier === "permanent") {
+      localStorage.setItem("scaptcha_permanent", "1");
+      setCookie("scaptcha_permanent", "1", 100 * 365 * 24 * 60 * 60 * 1000);
+      return;
+    }
+    var until = Date.now() + durationMs;
+    localStorage.setItem("scaptcha_ban_until", String(until));
+    localStorage.setItem("scaptcha_ban_tier", tier);
+    setCookie("scaptcha_ban_until", String(until), durationMs);
+    setCookie("scaptcha_ban_tier", tier, durationMs);
+  }
+
+  // ---------------------------------------------------------------------
+  // IP lookup: Apps Script's doPost/doGet has no reliable way to see the
+  // caller's IP on its own, so the client fetches its own public IP and
+  // sends it up. Cached per tab-session so we don't hit the IP service
+  // on every single check.
+  // ---------------------------------------------------------------------
+  function getClientIp() {
+    var cached = sessionStorage.getItem("scaptcha_client_ip");
+    if (cached) return Promise.resolve(cached);
+    return fetch("https://api.ipify.org?format=json")
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        sessionStorage.setItem("scaptcha_client_ip", j.ip);
+        return j.ip;
+      })
+      .catch(function () { return "unknown"; });
+  }
+
+  function postToDb(payload) {
+    if (!CFG.dbEndpoint) return Promise.resolve(null);
+    // text/plain avoids a CORS preflight OPTIONS request, which Apps
+    // Script web apps don't handle — the body is still valid JSON and
+    // e.postData.contents parses it exactly the same on the other end.
+    return fetch(CFG.dbEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    }).catch(function () { return null; });
+  }
+
+  function checkServerBan(ip) {
+    if (!CFG.dbEndpoint) return Promise.resolve(null);
+    var url = CFG.dbEndpoint + (CFG.dbEndpoint.indexOf("?") === -1 ? "?" : "&") +
+      "action=check&ip=" + encodeURIComponent(ip);
+    return fetch(url).then(function (r) { return r.json(); }).catch(function () { return null; });
+  }
+
+  function triggerBan(reason) {
+    if (localStorage.getItem("scaptcha_permanent") === "1") {
+      redirectToTier("permanent");
+      return;
+    }
+    var offense = bumpOffenseCount();
+    var siteUrl = window.location.hostname;
+
+    getClientIp().then(function (ip) {
+      if (offense === 1) {
+        persistBan("tier1", CFG.tier1Ms);
+        postToDb({ action: "log", website_url: siteUrl, ip: ip, ban_type: "temporary", tier: "tier1", reason: reason || "unknown" });
+        redirectToTier("tier1");
+        return;
+      }
+      var tier2Count = bumpTier2Count();
+      if (tier2Count >= CFG.tier2ToPermanentCount) {
+        persistBan("permanent", 0);
+        postToDb({ action: "log", website_url: siteUrl, ip: ip, ban_type: "permanent", reason: reason || "unknown" }).then(function () {
+          redirectToTier("permanent");
+        });
+        // Don't wait forever on the network for an already-decided outcome.
+        setTimeout(function () { redirectToTier("permanent"); }, 800);
+        return;
+      }
+      persistBan("tier2", CFG.tier2Ms);
+      postToDb({ action: "log", website_url: siteUrl, ip: ip, ban_type: "temporary", tier: "tier2", reason: reason || "unknown" });
+      redirectToTier("tier2");
+    });
+  }
+
+  function checkLocalBanStatus() {
+    if (localStorage.getItem("scaptcha_permanent") === "1" || getCookie("scaptcha_permanent") === "1") {
+      redirectToTier("permanent");
+      return true;
+    }
     var untilLS = parseInt(localStorage.getItem("scaptcha_ban_until") || "0", 10);
     var untilCK = parseInt(getCookie("scaptcha_ban_until") || "0", 10);
     var until = Math.max(isNaN(untilLS) ? 0 : untilLS, isNaN(untilCK) ? 0 : untilCK);
-    if (until && _now() < until) { redirectToBan("temporary"); return true; }
+    if (until && Date.now() < until) {
+      var tier = localStorage.getItem("scaptcha_ban_tier") || getCookie("scaptcha_ban_tier") || "tier1";
+      redirectToTier(tier);
+      return true;
+    }
     return false;
   }
 
-  // Signal collection 
-  var mousePoints = [], MAX_POINTS = 60, keyboardEventsSeen = 0, pageLoadTime = _now(), pointerCapable = false;
+  // Server-side check: catches repeat offenders who cleared storage/cookies
+  // or switched browsers, as long as they're still on the same IP. This is
+  // a network call, so it's given a short timeout and never blocks a clean
+  // visitor from seeing the page indefinitely.
+  function checkServerBanStatusAsync() {
+    return getClientIp().then(function (ip) {
+      if (ip === "unknown") return false;
+      return Promise.race([
+        checkServerBan(ip),
+        new Promise(function (resolve) { setTimeout(function () { resolve(null); }, CFG.serverCheckTimeoutMs); })
+      ]).then(function (result) {
+        if (!result || result.status !== "banned") return false;
+        if (result.tier === "permanent") {
+          persistBan("permanent", 0);
+          redirectToTier("permanent");
+        } else {
+          persistBan("tier2", CFG.tier2Ms);
+          redirectToTier("tier2");
+        }
+        return true;
+      });
+    }).catch(function () { return false; });
+  }
+
+  function checkBanStatus() {
+    // fast synchronous local check first
+    return checkLocalBanStatus();
+  }
+
+  // ---------------------------------------------------------------------
+  // Signal collection: mouse entropy + keyboard use + webdriver flag +
+  // time-on-page + input capability. Combined into one score instead of
+  // a single pass/fail check, so no single spoofed signal clears you.
+  // ---------------------------------------------------------------------
+  var mousePoints = [], MAX_POINTS = 60;
+  var keyboardEventsSeen = 0;
+  var pageLoadTime = Date.now();
+  var pointerCapable = false;
 
   document.addEventListener("mousemove", function (e) {
-    if (!e.isTrusted) { triggerBan("fake_event"); return; } 
-    mousePoints.push({ x: e.clientX, y: e.clientY, t: _now() });
+    mousePoints.push({ x: e.clientX, y: e.clientY, t: Date.now() });
     if (mousePoints.length > MAX_POINTS) mousePoints.shift();
   }, { passive: true });
 
-  document.addEventListener("keydown", function (e) { if(e.isTrusted) keyboardEventsSeen++; }, { passive: true });
-  document.addEventListener("pointerdown", function (e) { if(e.isTrusted) pointerCapable = true; }, { passive: true, once: true });
+  document.addEventListener("keydown", function () { keyboardEventsSeen++; }, { passive: true });
+  document.addEventListener("pointerdown", function () { pointerCapable = true; }, { passive: true, once: true });
 
   function mouseEntropyScore() {
     if (mousePoints.length < 8) return 0;
-    var straightCount = 0;
-    for (var i = 2; i < mousePoints.length; i++) {
-      var a = mousePoints[i - 2], b = mousePoints[i - 1], c = mousePoints[i];
+    var pts = mousePoints, straightCount = 0, velocities = [];
+    for (var i = 2; i < pts.length; i++) {
+      var a = pts[i - 2], b = pts[i - 1], c = pts[i];
       var v1x = b.x - a.x, v1y = b.y - a.y, v2x = c.x - b.x, v2y = c.y - b.y;
       if (Math.abs(v1x * v2y - v1y * v2x) < 0.6) straightCount++;
+      var dt = Math.max(1, c.t - b.t), dist = Math.hypot(c.x - b.x, c.y - b.y);
+      velocities.push(dist / dt);
     }
-    return (straightCount / (mousePoints.length - 2) > 0.92) ? 0 : 1;
+    var straightRatio = straightCount / (pts.length - 2);
+    var mean = velocities.reduce(function (s, v) { return s + v; }, 0) / velocities.length;
+    var variance = velocities.reduce(function (s, v) { return s + Math.pow(v - mean, 2); }, 0) / velocities.length;
+    var suspicious = straightRatio > 0.92 || variance < 0.0008;
+    return suspicious ? 0 : 1;
   }
 
-  function webdriverScore() { return navigator.webdriver ? 0 : 1; }
-  function timingScore() { return (_now() - pageLoadTime) > 1200 ? 1 : 0; }
-  function inputCapabilityScore() { return (keyboardEventsSeen > 0 || pointerCapable) ? 1 : 0; }
-  function looksHuman() { return (mouseEntropyScore() + webdriverScore() + timingScore() + inputCapabilityScore()) >= 3; }
+  function webdriverScore() {
+    // navigator.webdriver is set by Selenium/Playwright/Puppeteer unless
+    // explicitly patched out. Not authoritative, but a real signal.
+    return navigator.webdriver ? 0 : 1;
+  }
 
+  function timingScore() {
+    // A form filled and submitted in under ~1.2s of page load is very
+    // unlikely to be a human who read anything.
+    return (Date.now() - pageLoadTime) > 1200 ? 1 : 0;
+  }
+
+  function inputCapabilityScore() {
+    return (keyboardEventsSeen > 0 || pointerCapable) ? 1 : 0;
+  }
+
+  function looksHuman() {
+    var score = mouseEntropyScore() + webdriverScore() + timingScore() + inputCapabilityScore();
+    // require at least 3 of 4 independent signals to agree
+    return score >= 3;
+  }
+
+  // ---------------------------------------------------------------------
+  // Token: still generated client-side (any JS-visible token can be),
+  // but now carries a nonce + timestamp + sitekey your server should
+  // check the shape and freshness of before calling the real verify
+  // endpoint. See SERVER-SIDE CONTRACT at the bottom.
+  // ---------------------------------------------------------------------
   function randomNonce(len) {
     var bytes = new Uint8Array(len);
     (window.crypto || window.msCrypto).getRandomValues(bytes);
@@ -201,21 +364,52 @@
   }
 
   function buildToken() {
-    var payload = { sitekey: CFG.sitekey, nonce: randomNonce(16), ts: _now(), signals: { mouse: mouseEntropyScore(), webdriver: webdriverScore(), timing: timingScore(), input: inputCapabilityScore() } };
-    return _btoa(JSON.stringify(payload)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    var payload = {
+      sitekey: CFG.sitekey,
+      nonce: randomNonce(16),
+      ts: Date.now(),
+      signals: {
+        mouse: mouseEntropyScore(),
+        webdriver: webdriverScore(),
+        timing: timingScore(),
+        input: inputCapabilityScore()
+      }
+    };
+    // base64url-encode the payload; server decodes, checks freshness
+    // (< 2 min old), checks sitekey, then treats it as a claim to verify
+    // — NOT as proof by itself.
+    return btoa(JSON.stringify(payload)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   }
 
-  // INIT
+  // Optional: if the embedder configured a verify endpoint, ping it so
+  // the server can log/allowlist the token server-side ahead of submit.
+  // This is best-effort and never blocks the UI.
+  function notifyServerOptional(token) {
+    if (!CFG.verifyEndpoint) return;
+    try {
+      fetch(CFG.verifyEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: token, sitekey: CFG.sitekey })
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
   function initCaptcha(mountEl) {
     if (checkBanStatus()) return;
 
     var wrapper = document.createElement("div");
     wrapper.className = "scaptcha-auto-wrapper";
+
     wrapper.innerHTML = `
-      <div class="scaptcha" id="scMainWrap" data-sitekey="${CFG.sitekey}">
+      <div class="scaptcha" data-sitekey="${CFG.sitekey}">
         <div class="scaptcha-body">
-          <label class="sc-hp" aria-hidden="true"><input type="text" id="scHoneypot1" name="website" tabindex="-1" autocomplete="off"></label>
-          <label class="sc-hp" aria-hidden="true"><input type="email" id="scHoneypot2" name="email_confirm" tabindex="-1" autocomplete="off"></label>
+          <label class="sc-hp" aria-hidden="true">
+            <input type="text" id="scHoneypot1" name="website" tabindex="-1" autocomplete="off">
+          </label>
+          <label class="sc-hp" aria-hidden="true">
+            <input type="email" id="scHoneypot2" name="email_confirm" tabindex="-1" autocomplete="off">
+          </label>
           <div class="sc-box" id="scBox" role="checkbox" aria-checked="false" aria-label="${t('human')}" tabindex="0">
             <div class="sc-spinner"></div>
             <svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg>
@@ -232,10 +426,13 @@
             <span>SECURE</span>
           </div>
         </div>
+        <div class="scaptcha-footer">
+          <a href="${CFG.assetBase}/privacy.html" target="_blank">${t('privacy')}</a>
+          <a href="${CFG.assetBase}/terms.html" target="_blank">${t('terms')}</a>
+          <a href="${CFG.assetBase}/about.html" target="_blank">${t('about')}</a>
+        </div>
         <input type="hidden" name="scaptcha_token" id="scToken" value="">
       </div>
-
-      <!-- 🏀 Basketball Modal -->
       <div class="sc-overlay" id="scOverlay">
         <div class="sc-modal" role="dialog" aria-modal="true">
           <div class="sc-modal-head">
@@ -244,9 +441,7 @@
           </div>
           <p class="sc-instructions" id="scInstructions">${t('dragHint')}</p>
           <div class="sc-court" id="scCourt">
-            <div id="scChallengeMount">
-               <!-- তোর বাস্কেটবলের বল আর হুপ এখানে বসবে -->
-            </div>
+            <div id="scChallengeMount"></div>
             <div class="sc-court-msg" id="scCourtMsg"></div>
             <div class="sc-verified-flash" id="scFlash">
               <svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l6 6L20 6"/></svg>
@@ -258,38 +453,39 @@
     `;
 
     var host = mountEl || document.querySelector("form") || document.body;
-    host.insertBefore(wrapper, host.firstChild);
+    if (mountEl) {
+      mountEl.appendChild(wrapper);
+    } else if (host.tagName === "FORM") {
+      host.insertBefore(wrapper, host.firstChild);
+    } else {
+      host.appendChild(wrapper);
+    }
 
     var verified = false, checking = false;
     var scBox = wrapper.querySelector("#scBox"), scSub = wrapper.querySelector("#scSub");
     var scHp1 = wrapper.querySelector("#scHoneypot1"), scHp2 = wrapper.querySelector("#scHoneypot2");
     var scToken = wrapper.querySelector("#scToken");
-    var scOverlay = wrapper.querySelector("#scOverlay");
+    var scLabelWrap = wrapper.querySelector("#scLabelWrap"), scOverlay = wrapper.querySelector("#scOverlay");
     var scClose = wrapper.querySelector("#scClose");
+    var scCourtMsg = wrapper.querySelector("#scCourtMsg"), scFlash = wrapper.querySelector("#scFlash");
+    var scChallengeMount = wrapper.querySelector("#scChallengeMount");
+    var scInstructions = wrapper.querySelector("#scInstructions");
 
-    // DOM Tampering Observer
-    var observer = new MutationObserver(function(mutations) {
-      mutations.forEach(function(mutation) {
-        if (mutation.removedNodes.length > 0) triggerBan("dom_tampering");
-      });
-    });
-    observer.observe(wrapper, { childList: true, subtree: true });
-
-    // Spam click detect
+    // Fast spam-click detector: 5 clicks under 200ms apart => ban
     var clickCount = 0, lastClickTime = 0;
-    document.addEventListener("click", function (e) {
-      if (!e.isTrusted) return;
-      var now = _now();
+    document.addEventListener("click", function () {
+      var now = Date.now();
       if (now - lastClickTime < 200) {
         clickCount++;
         if (clickCount >= 5) { triggerBan("rapid_click"); return; }
-      } else { clickCount = 1; }
+      } else {
+        clickCount = 1;
+      }
       lastClickTime = now;
     });
 
     [scHp1, scHp2].forEach(function (hp) {
-      hp.addEventListener("input", function (e) {
-        if (!e.isTrusted) triggerBan("fake_event");
+      hp.addEventListener("input", function () {
         if (this.value.trim().length > 0) triggerBan("honeypot_" + this.id);
       });
     });
@@ -297,53 +493,251 @@
     function setSub(text, cls) { scSub.textContent = text; scSub.className = "sc-sub" + (cls ? " " + cls : ""); }
 
     function markVerified() {
-      verified = true; checking = false;
+      verified = true;
+      checking = false;
       scBox.classList.remove("loading", "failed");
       scBox.classList.add("checked");
       scBox.setAttribute("aria-checked", "true");
       setSub(t("verified"), "ok");
-      scToken.value = buildToken();
+      var token = buildToken();
+      scToken.value = token;
+      notifyServerOptional(token);
     }
 
-    // Modal Close Button
-    scClose.addEventListener("click", function(e) {
-      if (e.isTrusted) scOverlay.classList.remove("show");
-    });
-
-    // Handle Check & Basketball Logic Trigger
     function handleCheck() {
-      if (checkBanStatus() || verified || checking) return;
+      if (checkBanStatus()) return;
+      if (verified || checking) return;
       if (scHp1.value.trim().length > 0 || scHp2.value.trim().length > 0) { triggerBan("honeypot_on_submit"); return; }
 
-      checking = true; 
-      scBox.classList.add("loading");
-      setSub("Checking securely...", "");
-
-      setTimeout(function() {
-        if (looksHuman()) {
-          markVerified();
-        } else {
-          scBox.classList.remove("loading");
-          scBox.classList.add("failed");
-          checking = false;
-          setSub("Extra check needed", "err");
-          
-          // 🏀 যদি হিউম্যান টেস্টে ডাউট হয়, বাস্কেটবল গেমের উইন্ডো পপ-আপ হবে!
-          scOverlay.classList.add("show");
-        }
-      }, 1000);
+      checking = true; scBox.classList.add("loading"); setSub("Verifying…");
+      setTimeout(function () {
+        checking = false; scBox.classList.remove("loading");
+        if (looksHuman()) { markVerified(); }
+        else { setSub(t("extra"), "err"); openChallenge(); }
+      }, 450);
     }
 
-    scBox.addEventListener("click", function(e) {
-      if (!e.isTrusted) { triggerBan("fake_event"); return; }
-      handleCheck();
+    scBox.addEventListener("click", handleCheck);
+    scBox.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleCheck(); }
+    });
+    scLabelWrap.addEventListener("click", handleCheck);
+
+    // ---- Challenge: randomly basketball or slider ----
+    var missCount = 0;
+
+    function closeChallenge() { scOverlay.classList.remove("show"); }
+    scClose.addEventListener("click", closeChallenge);
+
+    function onMiss() {
+      missCount++;
+      if (missCount >= 3) { triggerBan("challenge_fail_3x"); return true; }
+      scCourtMsg.textContent = t("tryAgain") + " (" + (3 - missCount) + " " + t("triesLeft") + ")";
+      return false;
+    }
+
+    function onSolved() {
+      scFlash.classList.add("show");
+      setTimeout(function () { closeChallenge(); markVerified(); }, 650);
+    }
+
+    function openChallenge() {
+      missCount = 0;
+      scFlash.classList.remove("show");
+      scChallengeMount.innerHTML = "";
+      scCourtMsg.textContent = "";
+      var useSlider = Math.random() < 0.5;
+      scInstructions.textContent = useSlider ? t("sliderHint") : t("dragHint");
+      if (useSlider) mountSliderChallenge(scChallengeMount, onSolved, onMiss);
+      else mountBasketballChallenge(scChallengeMount, onSolved, onMiss);
+      scOverlay.classList.add("show");
+    }
+
+    function mountBasketballChallenge(mount, solved, miss) {
+      mount.innerHTML = `
+        <div class="sc-hoop">
+          <img src="${CFG.assetBase}/1.png" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+          <div class="sc-fallback" style="display:none;">🧺</div>
+          <div class="sc-hoop-zone" id="scZone"></div>
+        </div>
+        <div class="sc-ball" id="scBall">
+          <img src="${CFG.assetBase}/0.png" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+          <div class="sc-fallback" style="display:none;">🏀</div>
+        </div>
+      `;
+      var scBall = mount.querySelector("#scBall"), scZone = mount.querySelector("#scZone");
+      var scCourt = mount.closest(".sc-court");
+      var dragging = false, startLeft, startBottom, startX, startY;
+
+      function resetBall() { scBall.style.left = "20px"; scBall.style.bottom = "25px"; scBall.classList.remove("success"); }
+      resetBall();
+
+      function pointFromEvent(e) { return (e.touches && e.touches[0]) ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY }; }
+      function onDown(e) {
+        dragging = true; scBall.classList.add("dragging");
+        var p = pointFromEvent(e); startX = p.x; startY = p.y;
+        var rect = scBall.getBoundingClientRect(), courtRect = scCourt.getBoundingClientRect();
+        startLeft = rect.left - courtRect.left; startBottom = courtRect.bottom - rect.bottom;
+        e.preventDefault();
+      }
+      function onMove(e) {
+        if (!dragging) return;
+        var p = pointFromEvent(e);
+        scBall.style.left = (startLeft + (p.x - startX)) + "px";
+        scBall.style.bottom = (startBottom - (p.y - startY)) + "px";
+        e.preventDefault();
+      }
+      function onUp() {
+        if (!dragging) return; dragging = false; scBall.classList.remove("dragging");
+        var ballRect = scBall.getBoundingClientRect(), zoneRect = scZone.getBoundingClientRect();
+        var hit = (ballRect.left + ballRect.width / 2 > zoneRect.left && ballRect.left + ballRect.width / 2 < zoneRect.right &&
+                   ballRect.top + ballRect.height / 2 > zoneRect.top && ballRect.top + ballRect.height / 2 < zoneRect.bottom);
+        if (hit) { scBall.classList.add("success"); solved(); cleanup(); }
+        else { if (miss()) { cleanup(); return; } resetBall(); }
+      }
+      function cleanup() {
+        scBall.removeEventListener("pointerdown", onDown);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      }
+      scBall.addEventListener("pointerdown", onDown);
+      window.addEventListener("pointermove", onMove, { passive: false });
+      window.addEventListener("pointerup", onUp);
+    }
+
+    function mountSliderChallenge(mount, solved, miss) {
+      var targetPct = 30 + Math.random() * 45; // 30%-75% across the track
+      mount.innerHTML = `
+        <div class="sc-slider-track" id="scTrack">
+          <div class="sc-slider-target" id="scTarget" style="left:${targetPct}%;"></div>
+          <div class="sc-slider-piece" id="scPiece">➤</div>
+        </div>
+      `;
+      var track = mount.querySelector("#scTrack"), target = mount.querySelector("#scTarget"), piece = mount.querySelector("#scPiece");
+      var dragging = false, startX, startLeft;
+
+      function pointX(e) { return (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX; }
+      function onDown(e) {
+        dragging = true; piece.classList.add("dragging");
+        startX = pointX(e);
+        startLeft = piece.getBoundingClientRect().left - track.getBoundingClientRect().left;
+        e.preventDefault();
+      }
+      function onMove(e) {
+        if (!dragging) return;
+        var dx = pointX(e) - startX;
+        var trackW = track.clientWidth;
+        var newLeft = Math.max(0, Math.min(trackW - 46, startLeft + dx));
+        piece.style.left = newLeft + "px";
+        e.preventDefault();
+      }
+      function onUp() {
+        if (!dragging) return; dragging = false; piece.classList.remove("dragging");
+        var pieceRect = piece.getBoundingClientRect(), targetRect = target.getBoundingClientRect();
+        var pieceCenter = pieceRect.left + pieceRect.width / 2;
+        var hit = pieceCenter > targetRect.left && pieceCenter < targetRect.right;
+        if (hit) { solved(); cleanup(); }
+        else {
+          if (miss()) { cleanup(); return; }
+          piece.style.left = "0px";
+        }
+      }
+      function cleanup() {
+        piece.removeEventListener("pointerdown", onDown);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      }
+      piece.addEventListener("pointerdown", onDown);
+      window.addEventListener("pointermove", onMove, { passive: false });
+      window.addEventListener("pointerup", onUp);
+    }
+
+    var formEl = wrapper.closest("form") || document.querySelector("form");
+    if (formEl) {
+      formEl.addEventListener("submit", function (e) {
+        if (checkBanStatus()) { e.preventDefault(); return; }
+        if (!verified || scHp1.value.trim().length > 0 || scHp2.value.trim().length > 0) {
+          e.preventDefault();
+          triggerBan("unverified_submit");
+        }
+      });
+    }
+  }
+
+  function mountAll() {
+    var explicitMounts = document.querySelectorAll(".scaptcha[data-sitekey]");
+    if (explicitMounts.length) {
+      explicitMounts.forEach(function (el) {
+        var container = document.createElement("div");
+        el.replaceWith(container);
+        initCaptcha(container);
+      });
+    } else {
+      initCaptcha(null);
+    }
+  }
+
+  function boot() {
+    if (checkBanStatus()) return; // instant local check, no network wait
+    checkServerBanStatusAsync().then(function (wasBanned) {
+      if (wasBanned) return; // redirect already fired
+      mountAll();
     });
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function() { initCaptcha(); });
+  if ("loading" === document.readyState) {
+    document.addEventListener("DOMContentLoaded", boot);
   } else {
-    initCaptcha();
+    boot();
   }
-
 })();
+
+/* ===========================================================================
+ * SERVER-SIDE CONTRACT (implement this in your backend, not the browser)
+ * ===========================================================================
+ * 1. Client posts the form with `scaptcha_token` in the body.
+ * 2. Your server base64url-decodes the token and checks:
+ *      - payload.sitekey matches the site making the request
+ *      - payload.ts is within the last ~120000 ms (reject stale tokens)
+ *      - payload.nonce has not been seen before (store used nonces for a
+ *        few minutes — e.g. Redis SETNX with a TTL — to block replay)
+ *      - payload.signals sums to >= 3 (matches the client-side gate, but
+ *        now checked somewhere the client can't lie to for free)
+ * 3. If a `data-verify-endpoint` was configured, your endpoint also gets a
+ *    best-effort POST { token, sitekey } while the user is interacting —
+ *    use this to correlate IP, request rate, and user-agent server-side
+ *    for additional scoring your JS can never see.
+ * 4. Reject the form submission (HTTP 4xx) if any check fails. Do this on
+ *    every write endpoint the captcha guards, not just once at signup.
+ *
+ * ===========================================================================
+ * GOOGLE SHEETS BAN LOG CONTRACT (data-db-endpoint, e.g. your Apps Script)
+ * ===========================================================================
+ * The widget calls this endpoint two ways — pair each with a handler:
+ *
+ *   POST { action:"log", website_url, ip, ban_type, tier, reason }
+ *     -> append a row to "Ban_Logs" (temporary) or "Permanent_Bans"
+ *        (permanent), same as your existing doPost, keyed off ban_type.
+ *
+ *   GET  ?action=check&ip=<ip>
+ *     -> hash the ip the same way you hash it on write, look it up in
+ *        Permanent_Bans first, then Ban_Logs (only counting rows less
+ *        than 12h old), and respond with:
+ *          { "status": "banned", "tier": "permanent" }
+ *          { "status": "banned", "tier": "tier2" }
+ *          { "status": "clear" }
+ *        GET is used deliberately here (not POST) so the browser can
+ *        call it with zero custom headers — that keeps it a "simple
+ *        request" with no CORS preflight, which Apps Script web apps
+ *        don't answer by default.
+ *
+ * Two things worth knowing about the Sheet as a backend:
+ *   - It's a linear scan over every row on every check. Fine for small/
+ *     medium traffic; if this site gets busy, the lookup will get slow
+ *     and you'll want a real key-value store (Firestore, Redis, etc.)
+ *     instead of a Sheet.
+ *   - autoClean12HourBans() only runs when something calls it — it needs
+ *     an installable time-driven trigger (Apps Script editor -> Triggers
+ *     -> Add Trigger -> autoClean12HourBans -> Time-driven -> Hourly), or
+ *     it will just sit there and Ban_Logs will grow forever.
+ * =========================================================================== */
