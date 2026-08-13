@@ -1,42 +1,88 @@
-import streamlit as st
-import requests
+import os
 import json
+import requests
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
 
-# ড্যাশবোর্ডের ডিজাইন ও টাইটেল
-st.set_page_config(page_title="S-Captcha Admin", page_icon="🏀")
-st.title("🏀 S-Captcha Control Panel")
-st.caption("Domain Ownership Verification & IP Unban System")
-st.markdown("---")
+app = FastAPI(title="🏀 S-Captcha Admin Dashboard")
 
-# ইনপুট নেওয়ার ঘরগুলো
-script_url = st.text_input("Google Apps Script URL (Web App URL):")
-site_url = st.text_input("Website URL (e.g., https://example.com):")
-secret_code = st.text_input("Secret Code (from s-captcha-755842964.txt):")
-target_ip = st.text_input("IP Address to Unban:")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# আনব্যান বাটন
-if st.button("Verify & Unban IP", type="primary"):
-    # চেক করা হচ্ছে সব ঘর পূরণ করা হয়েছে কি না
-    if not script_url or not site_url or not secret_code or not target_ip:
-        st.error("⚠️ সবগুলো ঘর ঠিকমতো পূরণ কর ভাই!")
-    else:
-        payload = {
-            "action": "unban",
-            "siteUrl": site_url,
-            "secretCode": secret_code,
-            "ip": target_ip
-        }
-        
-        with st.spinner("ভেরিফাই আর আনব্যান করা হচ্ছে... একটু দাঁড়া!"):
-            try:
-                # Google Apps Script-এ ডেটা পাঠানো
-                response = requests.post(script_url, data=json.dumps(payload))
-                data = response.json()
-                
-                # রেজাল্ট দেখানো
-                if data.get("status") == "success":
-                    st.success(f"🎉 {data.get('message')}")
-                else:
-                    st.error(f"❌ {data.get('message')}")
-            except Exception as e:
-                st.error("⚠️ সার্ভারে রিকোয়েস্ট পাঠাতে সমস্যা হয়েছে! URL ঠিক আছে কিনা চেক কর।")
+# 🌐 HTML & CSS ইনজেক্ট করে বানানো Single-Page Dashboard
+@app.get("/", response_class=HTMLResponse)
+async def admin_dashboard():
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>S-Captcha Control Panel</title>
+        <style>
+            body { font-family: 'Segoe UI', monospace; background-color: #0a0a12; color: #00ffcc; padding: 40px; text-align: center; }
+            .container { max-width: 500px; margin: auto; background: #141423; padding: 30px; border-radius: 12px; border: 2px solid #00ffcc; box-shadow: 0 0 20px rgba(0, 255, 204, 0.2); }
+            h1 { color: #00ffcc; font-size: 22px; margin-bottom: 20px; }
+            input { width: 100%; padding: 12px; margin: 8px 0; background: #0a0a12; border: 1px solid #ff007f; color: #fff; border-radius: 6px; box-sizing: border-box; }
+            button { width: 100%; padding: 12px; background: #ff007f; color: white; border: none; font-weight: bold; border-radius: 6px; cursor: pointer; margin-top: 10px; }
+            button:hover { background: #e0006f; }
+            #res { margin-top: 15px; font-weight: bold; padding: 10px; border-radius: 6px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🏀 S-Captcha Admin Dashboard</h1>
+            <input type="text" id="scriptUrl" placeholder="Google Apps Script Web App URL">
+            <input type="text" id="siteUrl" placeholder="Website URL (e.g., https://site.com)">
+            <input type="text" id="secretCode" placeholder="Secret Code (from txt file)">
+            <input type="text" id="targetIp" placeholder="IP Address to Unban">
+            <button onclick="unban()">Verify & Unban IP</button>
+            <div id="res"></div>
+        </div>
+
+        <script>
+            async function unban() {
+                const resDiv = document.getElementById('res');
+                resDiv.innerText = "Processing...";
+                resDiv.style.color = "#00ffcc";
+
+                const payload = {
+                    action: "unban",
+                    siteUrl: document.getElementById('siteUrl').value,
+                    secretCode: document.getElementById('secretCode').value,
+                    ip: document.getElementById('targetIp').value
+                };
+
+                try {
+                    const response = await fetch(document.getElementById('scriptUrl').value, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await response.json();
+                    
+                    if(data.status === "success") {
+                        resDiv.innerText = "✅ " + data.message;
+                        resDiv.style.color = "#00ffcc";
+                    } else {
+                        resDiv.innerText = "❌ " + data.message;
+                        resDiv.style.color = "#ff007f";
+                    }
+                } catch(e) {
+                    resDiv.innerText = "🚨 Error connecting to server!";
+                    resDiv.style.color = "#ff007f";
+                }
+            }
+        </script>
+    </body>
+    </html>
+    """
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
