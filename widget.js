@@ -30,11 +30,11 @@
     dbEndpoint: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-db-endpoint")) || "https://script.google.com/macros/s/AKfycbwsnnrJMh5Svw378pmlwqaKNz2HHuw5r2hbuzFDWAgeGNd0ctw3mPf-sbvGOrIC5HcE/exec",
     // How long the server ban-check is allowed to delay first render for a
     // clean visitor before we give up waiting and show the widget anyway.
-    serverCheckTimeoutMs: 1500,
+    serverCheckTimeoutMs: 2200,
     tier1Ms: 5 * 60 * 1000,           // 1st offense — 5 minutes
     tier2Ms: 12 * 60 * 60 * 1000,     // 2nd+ offense — 12 hours
     tier2ToPermanentCount: 3,         // 3rd time hitting tier2 => lifetime
-    challengeAttempts: 1,             // only 1 shot at the challenge before a ban fires
+    challengeAttempts: 3,             // 3 shots at the mini-game before a ban fires
     // "lettergrid" = tap the c-1.png tile game, "basketball" = the drag-the-ball game
     challengeType: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-challenge-type")) || "lettergrid",
     banPages: {
@@ -46,11 +46,17 @@
     // meant for the site owner / admins / trusted testers, not end users.
     // Add more via data-whitelist-ips="ip1,ip2,ip3" (comma separated).
     whitelistIps: (function () {
-      var base = ["2401:4900:b6df:f2d6:2c08:8302:13ab:f640"];
+      var base = [];
       var extra = (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-whitelist-ips")) || "";
       var extraList = extra.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
       return base.concat(extraList);
-    })()
+    })(),
+    // Dynamic DNS hostname that always points at the owner's current IP —
+    // resolved fresh (via DNS-over-HTTPS, since browsers/Apps Script can't
+    // do raw DNS) so this keeps working even if the IP changes, unlike a
+    // hardcoded address. Override with data-whitelist-host.
+    whitelistHost: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-whitelist-host")) || "s-ip.duckdns.org",
+    whitelistCacheMs: 5 * 60 * 1000 // re-resolve the host every 5 min
   };
 
   var I18N = {
@@ -233,8 +239,31 @@
 
   var isWhitelistedClient = false;
 
-  function isWhitelisted(ip) {
-    return CFG.whitelistIps.indexOf(ip) !== -1;
+  function resolveWhitelistIps() {
+    var cacheKey = "scaptcha_whitelist_ips_cache";
+    var cached = null;
+    try { cached = JSON.parse(sessionStorage.getItem(cacheKey) || "null"); } catch (e) {}
+    if (cached && (Date.now() - cached.ts) < CFG.whitelistCacheMs) {
+      return Promise.resolve(cached.ips);
+    }
+    var host = CFG.whitelistHost;
+    var lookups = [
+      fetch("https://dns.google/resolve?name=" + encodeURIComponent(host) + "&type=A").then(function (r) { return r.json(); }).catch(function () { return null; }),
+      fetch("https://dns.google/resolve?name=" + encodeURIComponent(host) + "&type=AAAA").then(function (r) { return r.json(); }).catch(function () { return null; })
+    ];
+    return Promise.all(lookups).then(function (results) {
+      var ips = [];
+      results.forEach(function (res) {
+        if (res && res.Answer) res.Answer.forEach(function (a) { if (a.data) ips.push(a.data); });
+      });
+      ips = ips.concat(CFG.whitelistIps); // any static extras from data-whitelist-ips still apply
+      try { sessionStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), ips: ips })); } catch (e) {}
+      return ips;
+    });
+  }
+
+  function isWhitelisted(ip, list) {
+    return list.indexOf(ip) !== -1;
   }
 
   function clearLocalBanState() {
@@ -248,8 +277,9 @@
   // Resolved once at load; whitelisted visitors get their local ban state
   // wiped immediately (covers being whitelisted after an earlier ban) and
   // every later check/ban call short-circuits against this flag.
-  var whitelistCheckPromise = getClientIp().then(function (ip) {
-    isWhitelistedClient = isWhitelisted(ip);
+  var whitelistCheckPromise = Promise.all([getClientIp(), resolveWhitelistIps()]).then(function (res) {
+    var ip = res[0], list = res[1];
+    isWhitelistedClient = isWhitelisted(ip, list);
     if (isWhitelistedClient) clearLocalBanState();
     return isWhitelistedClient;
   });
@@ -466,6 +496,12 @@
           <label class="sc-hp" aria-hidden="true">
             <input type="email" id="scHoneypot2" name="email_confirm" tabindex="-1" autocomplete="off">
           </label>
+          <label class="sc-hp" aria-hidden="true">
+            <input type="checkbox" id="scHoneypot3" name="subscribe_updates" tabindex="-1" autocomplete="off">
+          </label>
+          <label class="sc-hp" aria-hidden="true">
+            <input type="text" id="scHoneypot4" name="confirm_password" tabindex="-1" autocomplete="off">
+          </label>
           <div class="sc-box" id="scBox" role="checkbox" aria-checked="false" aria-label="${t('human')}" tabindex="0">
             <div class="sc-spinner"></div>
             <svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg>
@@ -520,6 +556,8 @@
     var verified = false, checking = false;
     var scBox = wrapper.querySelector("#scBox"), scSub = wrapper.querySelector("#scSub");
     var scHp1 = wrapper.querySelector("#scHoneypot1"), scHp2 = wrapper.querySelector("#scHoneypot2");
+    var scHp3 = wrapper.querySelector("#scHoneypot3"), scHp4 = wrapper.querySelector("#scHoneypot4");
+    var scAllHp = [scHp1, scHp2, scHp3, scHp4];
     var scToken = wrapper.querySelector("#scToken");
     var scLabelWrap = wrapper.querySelector("#scLabelWrap"), scOverlay = wrapper.querySelector("#scOverlay");
     var scClose = wrapper.querySelector("#scClose");
@@ -540,9 +578,17 @@
       lastClickTime = now;
     });
 
-    [scHp1, scHp2].forEach(function (hp) {
-      hp.addEventListener("input", function () {
-        if (this.value.trim().length > 0) triggerBan("honeypot_" + this.id);
+    function hpTripped(hp) {
+      return hp.type === "checkbox" ? hp.checked : hp.value.trim().length > 0;
+    }
+    function anyHpTripped() {
+      return scAllHp.some(hpTripped);
+    }
+
+    scAllHp.forEach(function (hp) {
+      var evt = hp.type === "checkbox" ? "change" : "input";
+      hp.addEventListener(evt, function () {
+        if (hpTripped(this)) triggerBan("honeypot_" + this.id);
       });
     });
 
@@ -564,7 +610,7 @@
       if (isWhitelistedClient) { markVerified(); return; } // god mode: skip everything
       if (checkBanStatus()) return;
       if (verified || checking) return;
-      if (scHp1.value.trim().length > 0 || scHp2.value.trim().length > 0) { triggerBan("honeypot_on_submit"); return; }
+      if (anyHpTripped()) { triggerBan("honeypot_on_submit"); return; }
 
       checking = true; scBox.classList.add("loading"); setSub("Verifying…");
       setTimeout(function () {
@@ -767,8 +813,19 @@
             }
           } else {
             btn.classList.add("sc-tile-wrong");
-            done = true;
-            miss();
+            var banned = miss();
+            if (banned) {
+              done = true;
+            } else {
+              // another try remains — reset the whole board after a beat
+              setTimeout(function () {
+                collected = 0;
+                Array.prototype.forEach.call(wrap.querySelectorAll(".sc-grid-tile"), function (b) {
+                  b.classList.remove("sc-tile-correct", "sc-tile-wrong");
+                  b.disabled = false;
+                });
+              }, 400);
+            }
           }
         });
         wrap.appendChild(btn);
@@ -779,7 +836,7 @@
     if (formEl) {
       formEl.addEventListener("submit", function (e) {
         if (checkBanStatus()) { e.preventDefault(); return; }
-        if (!verified || scHp1.value.trim().length > 0 || scHp2.value.trim().length > 0) {
+        if (!verified || anyHpTripped()) {
           e.preventDefault();
           triggerBan("unverified_submit");
         }
