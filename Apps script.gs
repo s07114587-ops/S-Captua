@@ -11,7 +11,7 @@
 // client sends. Static fallbacks — the primary source of truth is the
 // dynamic DNS hostname below, which tracks the owner's current IP even
 // if it changes (unlike a hardcoded address).
-var WHITELIST_STATIC_IPS = [];
+var WHITELIST_STATIC_IPS = ["2a09:bac5:3e0e:1a8c::2a5:58"];
 var WHITELIST_HOST = "s-ip.duckdns.org";
 var WHITELIST_CACHE_KEY = "scaptcha_whitelist_ips_v1";
 var WHITELIST_CACHE_TTL_SEC = 300; // re-resolve every 5 min
@@ -43,7 +43,8 @@ function resolveWhitelistIps_() {
 }
 
 function isWhitelistedIp_(rawIp) {
-  return resolveWhitelistIps_().indexOf(rawIp) !== -1;
+  var norm = (rawIp || "").toLowerCase();
+  return resolveWhitelistIps_().some(function (ip) { return ip.toLowerCase() === norm; });
 }
 
 function hashIp_(rawIp) {
