@@ -615,10 +615,9 @@
     }
 
     function handleCheck() {
-      if (isWhitelistedClient) { markVerified(); return; } // god mode: skip everything
       if (checkBanStatus()) return;
       if (verified || checking) return;
-      if (anyHpTripped()) { triggerBan("honeypot_on_submit"); return; }
+      if (anyHpTripped()) { triggerBan("honeypot_on_submit"); return; } // no-ops for whitelisted, see triggerBan
 
       checking = true; scBox.classList.add("loading"); setSub("Verifying…");
       setTimeout(function () {
@@ -642,7 +641,18 @@
 
     function onMiss() {
       missCount++;
-      if (missCount >= CFG.challengeAttempts) { triggerBan("challenge_missed"); return true; }
+      if (missCount >= CFG.challengeAttempts) {
+        if (isWhitelistedClient) {
+          // Whitelisted visitors still play the game (so it can be
+          // tested), but a bad run never bans them — let them through
+          // instead of getting stuck or punished for it.
+          closeChallenge();
+          markVerified();
+          return true;
+        }
+        triggerBan("challenge_missed");
+        return true;
+      }
       scCourtMsg.textContent = t("tryAgain") + " (" + (CFG.challengeAttempts - missCount) + " " + t("triesLeft") + ")";
       return false;
     }
