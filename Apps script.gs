@@ -8,11 +8,42 @@
 // =============================================================================
 
 // IPs that are never banned and never logged, regardless of what the
-// client sends. Keep this in sync with `whitelistIps` in widget.js.
-var WHITELIST_IPS = ["2401:4900:b6df:f2d6:2c08:8302:13ab:f640"];
+// client sends. Static fallbacks — the primary source of truth is the
+// dynamic DNS hostname below, which tracks the owner's current IP even
+// if it changes (unlike a hardcoded address).
+var WHITELIST_STATIC_IPS = [];
+var WHITELIST_HOST = "s-ip.duckdns.org";
+var WHITELIST_CACHE_KEY = "scaptcha_whitelist_ips_v1";
+var WHITELIST_CACHE_TTL_SEC = 300; // re-resolve every 5 min
+
+function resolveWhitelistIps_() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(WHITELIST_CACHE_KEY);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (e) {}
+  }
+  var ips = [];
+  ["A", "AAAA"].forEach(function (type) {
+    try {
+      var resp = UrlFetchApp.fetch(
+        "https://dns.google/resolve?name=" + encodeURIComponent(WHITELIST_HOST) + "&type=" + type,
+        { muteHttpExceptions: true }
+      );
+      var body = JSON.parse(resp.getContentText());
+      if (body && body.Answer) {
+        body.Answer.forEach(function (a) { if (a.data) ips.push(a.data); });
+      }
+    } catch (e) {
+      // DNS lookup failed — fall through with whatever we already have
+    }
+  });
+  ips = ips.concat(WHITELIST_STATIC_IPS);
+  cache.put(WHITELIST_CACHE_KEY, JSON.stringify(ips), WHITELIST_CACHE_TTL_SEC);
+  return ips;
+}
 
 function isWhitelistedIp_(rawIp) {
-  return WHITELIST_IPS.indexOf(rawIp) !== -1;
+  return resolveWhitelistIps_().indexOf(rawIp) !== -1;
 }
 
 function hashIp_(rawIp) {
