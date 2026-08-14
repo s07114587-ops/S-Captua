@@ -63,7 +63,7 @@
     en: { human: "I am human", verify: "S-Captcha", verified: "Verified", extra: "Extra check needed",
           checkTitle: "Quick visual check", dragHint: "Drag the ball into the hoop to verify you're human.",
           sliderHint: "Slide the piece into place to verify you're human.",
-          gridHint: "Tap only the highlighted letters. Any other tile ends the check.",
+          gridHint: "Tap the D and Y tiles only. Any other tile ends the check.",
           swish: "Verified — swish!", solved: "Verified!",
           tryAgain: "not quite — try again", triesLeft: "tries left", privacy: "Privacy", terms: "Terms", about: "About" }
   };
@@ -553,7 +553,7 @@
       host.appendChild(wrapper);
     }
 
-    var verified = false, checking = false;
+    var verified = false, checking = false, pendingFormSubmit = false;
     var scBox = wrapper.querySelector("#scBox"), scSub = wrapper.querySelector("#scSub");
     var scHp1 = wrapper.querySelector("#scHoneypot1"), scHp2 = wrapper.querySelector("#scHoneypot2");
     var scHp3 = wrapper.querySelector("#scHoneypot3"), scHp4 = wrapper.querySelector("#scHoneypot4");
@@ -604,6 +604,14 @@
       var token = buildToken();
       scToken.value = token;
       notifyServerOptional(token);
+      if (pendingFormSubmit) {
+        pendingFormSubmit = false;
+        // Re-fire submit now that verified is true and no honeypot is
+        // tripped — the listener below just lets a verified submit
+        // through, so this completes the submission the user originally
+        // asked for instead of leaving it silently swallowed.
+        if (formEl) { formEl.requestSubmit ? formEl.requestSubmit() : formEl.submit(); }
+      }
     }
 
     function handleCheck() {
@@ -772,12 +780,12 @@
     // alignment with a re-exported version of that image.
     var LETTER_GRID_TILES = [
       { letter: "F", x: 34.8, y: 36.6, valid: false },
-      { letter: "B", x: 50.5, y: 36.6, valid: true },
+      { letter: "B", x: 50.5, y: 36.6, valid: false },
       { letter: "H", x: 66.1, y: 36.6, valid: false },
       { letter: "F", x: 34.8, y: 57.1, valid: false },
       { letter: "Y", x: 50.5, y: 57.1, valid: true },
       { letter: "W", x: 66.1, y: 57.1, valid: false },
-      { letter: "D", x: 34.8, y: 77.6, valid: false },
+      { letter: "D", x: 34.8, y: 77.6, valid: true },
       { letter: "S", x: 50.5, y: 77.6, valid: false },
       { letter: "Z", x: 66.1, y: 77.6, valid: false }
     ];
@@ -836,9 +844,22 @@
     if (formEl) {
       formEl.addEventListener("submit", function (e) {
         if (checkBanStatus()) { e.preventDefault(); return; }
-        if (!verified || anyHpTripped()) {
+        if (isWhitelistedClient) return; // god mode — never intercept
+        if (anyHpTripped()) {
+          // A hidden field got filled — that's a real bot signal on its
+          // own, ban immediately, no need to show a challenge for it.
           e.preventDefault();
-          triggerBan("unverified_submit");
+          triggerBan("honeypot_on_submit");
+          return;
+        }
+        if (!verified) {
+          // Not a bot signal yet — just hasn't proven human. Run them
+          // through the normal check flow (silent pass or the mini-game)
+          // instead of banning outright. This is what was banning real
+          // visitors who submitted without ticking the box first.
+          e.preventDefault();
+          pendingFormSubmit = true;
+          handleCheck();
         }
       });
     }
