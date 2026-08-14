@@ -46,7 +46,10 @@
     // meant for the site owner / admins / trusted testers, not end users.
     // Add more via data-whitelist-ips="ip1,ip2,ip3" (comma separated).
     whitelistIps: (function () {
-      var base = [];
+      // Static fallback IPs — always whitelisted even if the DuckDNS
+      // lookup below is stale or fails. Add more via
+      // data-whitelist-ips="ip1,ip2" (comma separated).
+      var base = ["2a09:bac5:3e0e:1a8c::2a5:58"];
       var extra = (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-whitelist-ips")) || "";
       var extraList = extra.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
       return base.concat(extraList);
@@ -263,7 +266,8 @@
   }
 
   function isWhitelisted(ip, list) {
-    return list.indexOf(ip) !== -1;
+    var norm = (ip || "").toLowerCase();
+    return list.some(function (entry) { return entry.toLowerCase() === norm; });
   }
 
   function clearLocalBanState() {
