@@ -892,6 +892,23 @@
     }
   }
 
+  // Dev/testing convenience — call scaptchaDebug.clearMyBan() from the
+  // browser console any time to instantly clear YOUR local ban state
+  // (localStorage + cookies) without waiting out the timer. This only
+  // clears what your browser stores locally; it doesn't touch the Sheet
+  // log, so the server-side check can still catch you if your IP is
+  // logged there and isn't on the whitelist.
+  window.scaptchaDebug = {
+    clearMyBan: function () {
+      clearLocalBanState();
+      console.log("[S-Captcha] local ban state cleared. Reloading…");
+      location.reload();
+    },
+    whoAmI: function () {
+      getClientIp().then(function (ip) { console.log("[S-Captcha] detected IP:", ip); });
+    }
+  };
+
   function boot() {
     // Don't let a slow/unreachable IP lookup stall real visitors — if the
     // whitelist check hasn't resolved fast, fall through to the normal
