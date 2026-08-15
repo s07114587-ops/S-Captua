@@ -1,31 +1,101 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="S-Captcha by Shubhomoy - The ultimate free, open-source, and zero-database smart captcha security system. Protect your website instantly with a single line of code!"><title>S-Captcha | Security Portal</title><script async crossorigin="anonymous" data-clerk-publishable-key="YOUR_API1_KEY_HERE" src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js" type="text/javascript"></script><style>*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif}body{background-color:#1a202c;color:#f8fafc;display:flex;flex-direction:column;min-height:100vh}header{padding:20px 40px;display:flex;justify-content:space-between;align-items:center;background:rgba(15,23,42,.8);border-bottom:2px solid #ec4899}.logo{display:flex;align-items:center;gap:10px;font-size:24px;font-weight:700;color:#f97316}.logo img{height:40px;width:auto}main{flex:1;display:flex;justify-content:center;align-items:center;padding:40px 20px}.card{background:#1e293b;padding:40px;border-radius:15px;box-shadow:0 10px 25px rgba(0,0,0,.5);text-align:center;max-width:600px;width:100%;border-top:4px solid #ef4444}h1{margin-bottom:20px;color:#22c55e}.btn{background:linear-gradient(135deg,#ef4444,#f97316);color:#fff;border:none;padding:12px 25px;font-size:16px;font-weight:700;border-radius:8px;cursor:pointer;transition:transform .2s,box-shadow .2s;text-decoration:none;display:inline-block;margin-top:15px}.btn:hover{transform:translateY(-2px);box-shadow:0 5px 15px rgba(249,115,22,.4)}.btn-green{background:linear-gradient(135deg,#10b981,#22c55e)}.instruction-box{background:#0f172a;border-left:4px solid #ec4899;padding:20px;border-radius:8px;margin:25px 0;text-align:left}.instruction-box p{margin-bottom:10px;color:#cbd5e1;font-size:15px}code{display:block;background:#000;color:#22c55e;padding:15px;border-radius:5px;overflow-x:auto;font-family:monospace;font-size:14px}footer{background:rgba(15,23,42,.9);padding:20px;text-align:center;border-top:2px solid #22c55e}footer a{color:#cbd5e1;text-decoration:none;margin:0 15px;font-size:14px;transition:color .2s}footer a:hover{color:#ec4899}#auth-view,#unauth-view{display:none}</style></head><body><header><div class="logo"><img src="111.png" alt="S-Captcha Logo" onerror='this.src="https://via.placeholder.com/40?text=Logo"'> S-Captcha</div><div id="user-button"></div></header><main><div class="card"><div id="unauth-view"><h1>Welcome to S-Captcha</h1><p style="color:#cbd5e1;margin-bottom:20px">The smartest zero-database captcha system. Please login or sign up to get your setup code.</p><button class="btn" id="login-btn">Login / Sign Up</button></div><div id="auth-view"><h1 id="welcome-text">Welcome Developer!</h1><div class="instruction-box"><h3 style="color:#f97316;margin-bottom:10px">How to use S-Captcha:</h3><p>It's incredibly easy! Just copy the script tag below and paste it anywhere inside the<b>&lt;head&gt;</b>or<b>&lt;body&gt;</b>of your website's HTML file.</p><p>Our smart system will automatically detect and protect your site from bots.</p><code>&lt;script src="https://www.scaptua.duckdns.org/widget.js" async defer&gt;&lt;/script&gt;</code></div><a href="https://www.dashboard.scaptua.duckdns.org/" class="btn btn-green">Go to Dashboard</a></div></div></main><footer><a href="https://www.scaptua.duckdns.org/about.html" target="_blank">About</a><a href="https://www.scaptua.duckdns.org/terms.html" target="_blank">Terms</a><a href="https://www.scaptua.duckdns.org/privacy.html" target="_blank">Privacy</a></footer><script>window.addEventListener('load', async function () {
-            // Wait for Clerk to initialize
-            await Clerk.load();
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="S-Captcha by Shubhomoy - The ultimate free, open-source, and zero-database smart captcha security system. Protect your website instantly with a single line of code!">
+    
+    <!-- Favicon -->
+    <link rel="icon" href="111.ico" type="image/x-icon">
+    
+    <title>S-Captcha | Security Portal</title>
 
-            const unauthView = document.getElementById('unauth-view');
-            const authView = document.getElementById('auth-view');
-            const userButtonDiv = document.getElementById('user-button');
-            const welcomeText = document.getElementById('welcome-text');
-            const loginBtn = document.getElementById('login-btn');
+    <!-- Clerk JS SDK -->
+    <script
+        async
+        crossorigin="anonymous"
+        data-clerk-publishable-key="YOUR_API1_KEY_HERE"
+        src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+        type="text/javascript"
+    ></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: sans-serif; }
+        body { background-color: #1a202c; color: #f8fafc; min-height: 100vh; display: flex; flex-direction: column; }
+        
+        /* Header & Logo */
+        header { padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ec4899; }
+        .logo { display: flex; align-items: center; gap: 10px; font-size: 24px; font-weight: bold; color: #f97316; }
+        .logo img { height: 40px; }
+
+        /* Main Area */
+        main { flex: 1; display: flex; justify-content: center; align-items: center; padding: 20px; }
+        .card { background: #1e293b; padding: 40px; border-radius: 15px; text-align: center; max-width: 500px; width: 100%; border: 1px solid #ef4444; }
+        
+        /* Buttons */
+        .btn { background: #ef4444; color: white; border: none; padding: 12px 25px; font-size: 16px; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-block; margin-top: 20px; }
+        .btn-green { background: #22c55e; }
+
+        /* Instructions */
+        #auth-view { display: none; } /* Hide by default */
+        .instruction-box { background: #000; padding: 15px; border-radius: 8px; text-align: left; margin: 20px 0; color: #22c55e; font-family: monospace; }
+        
+        /* Footer */
+        footer { padding: 20px; text-align: center; border-top: 1px solid #22c55e; }
+        footer a { color: #cbd5e1; margin: 0 10px; text-decoration: none; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">
+            <img src="111.png" alt="Logo"> S-Captcha
+        </div>
+        <div id="user-button"></div>
+    </header>
+
+    <main>
+        <div class="card">
+            <!-- Login View -->
+            <div id="unauth-view">
+                <h1 style="color: #f97316;">S-Captcha Login</h1>
+                <button class="btn" id="login-btn">Login / Sign Up</button>
+            </div>
+
+            <!-- After Login View -->
+            <div id="auth-view">
+                <h1 style="color: #22c55e;">Welcome Developer!</h1>
+                <p>Copy this widget script:</p>
+                <div class="instruction-box">
+                    &lt;script src="https://www.scaptua.duckdns.org/widget.js" async defer&gt;&lt;/script&gt;
+                </div>
+                <a href="https://www.dashboard.scaptua.duckdns.org/" class="btn btn-green">Go to Dashboard</a>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <a href="https://www.scaptua.duckdns.org/about.html">About</a>
+        <a href="https://www.scaptua.duckdns.org/terms.html">Terms</a>
+        <a href="https://www.scaptua.duckdns.org/privacy.html">Privacy</a>
+    </footer>
+
+    <script>
+        window.addEventListener('load', async function () {
+            await Clerk.load();
+            const unauth = document.getElementById('unauth-view');
+            const auth = document.getElementById('auth-view');
+            const userBtnDiv = document.getElementById('user-button');
 
             if (Clerk.user) {
-                // User is Logged In
-                authView.style.display = 'block';
-                unauthView.style.display = 'none';
-                
-                // Show profile picture top right
-                Clerk.mountUserButton(userButtonDiv);
-                
-                // Greet user
-                welcomeText.innerText = `Welcome back, ${Clerk.user.firstName || 'Developer'}! 😎`;
+                auth.style.display = 'block'; // Show if logged in
+                unauth.style.display = 'none';
+                Clerk.mountUserButton(userBtnDiv);
             } else {
-                // User is NOT Logged In
-                unauthView.style.display = 'block';
-                authView.style.display = 'none';
-                
-                // Handle Login Button Click
-                loginBtn.addEventListener('click', () => {
-                    Clerk.openSignIn();
-                });
+                unauth.style.display = 'block'; // Show if NOT logged in
+                document.getElementById('login-btn').onclick = () => Clerk.openSignIn();
             }
-        });</script></body></html>
+        });
+    </script>
+</body>
+</html>
