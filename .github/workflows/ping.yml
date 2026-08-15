@@ -1,0 +1,15 @@
+name: Auto Ping URL
+
+on:
+  schedule:
+    # Runs every 5 minutes
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Dashboard
+        run: |
+          curl -s -o /dev/null -w "%{http_code}\n" https://www.dashboard.scaptua.duckdns.org/
