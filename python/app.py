@@ -109,10 +109,11 @@ HTML_CONTENT = """
                 if (data.logs && data.logs.length > 0) {
                     data.logs.forEach(log => {
                         const color = log.type === 'Permanent' ? '#ff007f' : '#00ffcc';
+                        // ✅ FIX: Using log.ipHash instead of log.ip
                         tbody.innerHTML += `<tr>
                             <td style="color:${color}; font-weight:bold;">${log.type}</td>
                             <td style="color:#aaa;">${log.ipHash.substring(0,6)}...</td>
-                            <td style="color:#888;">${log.time}</td>
+                            <td style="color:#888; font-size:10px;">${log.time}</td>
                             <td><button class="select-btn" onclick="selectForUnban('${log.time}')">SELECT</button></td>
                         </tr>`;
                     });
