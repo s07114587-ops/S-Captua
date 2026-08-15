@@ -9,7 +9,7 @@
     verifyEndpoint: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-verify-endpoint")) || null,
     assetBase: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-asset-base")) || "https://www.scaptua.duckdns.org",
     // Google Apps Script Web App URL that logs bans / answers ban checks. Recommend pointing this at the real script.google.com/macros/.../exec URL rather than a tinyurl redirect — one less hop, one less thing that can break if the short link ever expires or gets rate-limited.
-    dbEndpoint: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-db-endpoint")) || "https://script.google.com/macros/s/AKfycbwsnnrJMh5Svw378pmlwqaKNz2HHuw5r2hbuzFDWAgeGNd0ctw3mPf-sbvGOrIC5HcE/exec",
+    dbEndpoint: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-db-endpoint")) || "https://script.google.com/macros/s/AKfycbxhafkm6BGu4TaRfPkmYeDF-nP4lx-AUx7d2Mk35NOV7JMTeG2zwCdzDVSkXiNRpA7j/exec",
     // How long the server ban-check is allowed to delay first render for a clean visitor before we give up waiting and show the widget anyway.
     serverCheckTimeoutMs: 2200,
     tier1Ms: 5 * 60 * 1000,           // 1st offense — 5 minutes
