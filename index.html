@@ -1,236 +1,537 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- Cool Meta Description -->
-    <meta name="description" content="S-Captcha by Shubhomoy - The ultimate free, open-source, and zero-database smart captcha security system. Protect your website instantly with a single line of code!">
-    <title>S-Captcha | Security Portal</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>S-Captcha — Zero-Database CAPTCHA Verification</title>
+<meta name="description" content="S-Captcha by Shubhomoy: a zero-database CAPTCHA engine that verifies humans without ever storing a single byte of user data. Drop-in, privacy-first, and refreshingly fast to embed.">
 
-    <!-- Clerk JS SDK -->
-    <script
-        async
-        crossorigin="anonymous"
-        data-clerk-publishable-key="YOUR_API1_KEY_HERE"
-        src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
-        type="text/javascript"
-    ></script>
+<link rel="icon" type="image/x-icon" href="111.ico">
+<link rel="shortcut icon" type="image/x-icon" href="111.ico">
 
-    <style>
-        /* Global Styles & Background (Based on your image) */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        body {
-            background-color: #1a202c; /* Dark Slate Blue from image */
-            color: #f8fafc;
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-        }
+<!-- Clerk JS SDK -->
+<script
+  async
+  crossorigin="anonymous"
+  data-clerk-publishable-key="pk_test_YOUR_PUBLISHABLE_KEY"
+  src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+  type="text/javascript"
+></script>
 
-        /* Navbar & Logo */
-        header {
-            padding: 20px 40px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: rgba(15, 23, 42, 0.8);
-            border-bottom: 2px solid #ec4899; /* Pink accent */
-        }
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 24px;
-            font-weight: bold;
-            color: #f97316; /* Orange accent */
-        }
-        .logo img {
-            height: 40px;
-            width: auto;
-        }
+<style>
+  :root{
+    --bg-0:#0f172a;
+    --bg-1:#141b2e;
+    --card:#161f36;
+    --border:#25304a;
+    --text:#e6ebf5;
+    --muted:#8b96ad;
 
-        /* Main Content Container */
-        main {
-            flex: 1;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 40px 20px;
-        }
-        
-        .card {
-            background: #1e293b;
-            padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-            text-align: center;
-            max-width: 600px;
-            width: 100%;
-            border-top: 4px solid #ef4444; /* Red accent */
-        }
+    --pink:#ec4899;
+    --red:#ef4444;
+    --orange:#f97316;
+    --green:#22c55e;
 
-        h1 {
-            margin-bottom: 20px;
-            color: #22c55e; /* Green accent */
-        }
+    --grad-hazard: linear-gradient(90deg, var(--red), var(--orange));
+    --grad-brand: linear-gradient(135deg, var(--pink), var(--red) 45%, var(--orange));
+    --radius: 14px;
+  }
 
-        /* Buttons */
-        .btn {
-            background: linear-gradient(135deg, #ef4444, #f97316); /* Red to Orange */
-            color: white;
-            border: none;
-            padding: 12px 25px;
-            font-size: 16px;
-            font-weight: bold;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            text-decoration: none;
-            display: inline-block;
-            margin-top: 15px;
-        }
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(249, 115, 22, 0.4);
-        }
-        .btn-green {
-            background: linear-gradient(135deg, #10b981, #22c55e); /* Green */
-        }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
 
-        /* Post-Login Instructions */
-        .instruction-box {
-            background: #0f172a;
-            border-left: 4px solid #ec4899; /* Pink */
-            padding: 20px;
-            border-radius: 8px;
-            margin: 25px 0;
-            text-align: left;
-        }
-        .instruction-box p {
-            margin-bottom: 10px;
-            color: #cbd5e1;
-            font-size: 15px;
-        }
-        code {
-            display: block;
-            background: #000;
-            color: #22c55e;
-            padding: 15px;
-            border-radius: 5px;
-            overflow-x: auto;
-            font-family: monospace;
-            font-size: 14px;
-        }
+  body{
+    min-height:100vh;
+    background:
+      radial-gradient(circle at 15% -10%, rgba(236,72,153,0.16), transparent 45%),
+      radial-gradient(circle at 110% 10%, rgba(249,115,22,0.14), transparent 45%),
+      var(--bg-0);
+    color:var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+    display:flex;
+    flex-direction:column;
+  }
 
-        /* Footer */
-        footer {
-            background: rgba(15, 23, 42, 0.9);
-            padding: 20px;
-            text-align: center;
-            border-top: 2px solid #22c55e; /* Green accent */
-        }
-        footer a {
-            color: #cbd5e1;
-            text-decoration: none;
-            margin: 0 15px;
-            font-size: 14px;
-            transition: color 0.2s;
-        }
-        footer a:hover {
-            color: #ec4899; /* Pink hover */
-        }
+  /* ---------- background grid signature ---------- */
+  .verify-grid{
+    position:fixed;
+    inset:0;
+    z-index:0;
+    pointer-events:none;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: radial-gradient(circle at 50% 20%, black, transparent 75%);
+  }
 
-        /* Hide elements by default until Clerk loads */
-        #unauth-view, #auth-view {
-            display: none;
-        }
-    </style>
+  a{color:inherit;}
+
+  /* ---------- header ---------- */
+  header{
+    position:relative;
+    z-index:2;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding: 16px 24px;
+    border-bottom:1px solid var(--border);
+    background:rgba(15,23,42,0.75);
+    backdrop-filter: blur(10px);
+    position:sticky;
+    top:0;
+  }
+
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-weight:700;
+    font-size:1.15rem;
+    letter-spacing:0.2px;
+  }
+
+  .brand img{
+    width:32px;
+    height:32px;
+    border-radius:8px;
+    object-fit:cover;
+    background:var(--card);
+    border:1px solid var(--border);
+  }
+
+  .brand .s-part{ color:#fff; }
+  .brand .cap-part{
+    background: var(--grad-brand);
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+  }
+
+  #user-button{
+    display:flex;
+    align-items:center;
+  }
+
+  .header-auth-placeholder{
+    width:36px;
+    height:36px;
+    border-radius:50%;
+    border:1px solid var(--border);
+    background:var(--card);
+  }
+
+  /* ---------- main ---------- */
+  main{
+    position:relative;
+    z-index:1;
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding: 40px 20px;
+  }
+
+  .card{
+    width:100%;
+    max-width:460px;
+    background: linear-gradient(180deg, var(--card), var(--bg-1));
+    border:1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 34px 30px;
+    position:relative;
+    overflow:hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  }
+
+  .card::before{
+    content:"";
+    position:absolute;
+    inset:0 0 auto 0;
+    height:4px;
+    background: linear-gradient(90deg, var(--pink), var(--red), var(--orange), var(--green));
+  }
+
+  .eyebrow{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-size:0.72rem;
+    text-transform:uppercase;
+    letter-spacing:1.4px;
+    color:var(--orange);
+    font-weight:700;
+    margin-bottom:14px;
+  }
+
+  .eyebrow .dot{
+    width:6px;height:6px;border-radius:50%;
+    background:var(--green);
+    box-shadow:0 0 0 3px rgba(34,197,94,0.18);
+  }
+
+  h1{
+    font-size:1.6rem;
+    margin:0 0 8px 0;
+    line-height:1.25;
+  }
+
+  .tagline{
+    color:var(--muted);
+    font-size:0.95rem;
+    margin:0 0 26px 0;
+    line-height:1.5;
+  }
+
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    width:100%;
+    padding:13px 18px;
+    border:none;
+    border-radius:10px;
+    font-size:0.98rem;
+    font-weight:700;
+    cursor:pointer;
+    text-decoration:none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  }
+
+  .btn:active{ transform: translateY(1px) scale(0.99); }
+
+  .btn-primary{
+    background: var(--grad-hazard);
+    color:#fff;
+    box-shadow: 0 10px 25px rgba(239,68,68,0.28);
+  }
+  .btn-primary:hover{ box-shadow: 0 12px 30px rgba(239,68,68,0.4); }
+
+  .btn-success{
+    background: linear-gradient(90deg, #16a34a, var(--green));
+    color:#06170c;
+    box-shadow: 0 10px 25px rgba(34,197,94,0.25);
+    margin-top:18px;
+  }
+  .btn-success:hover{ box-shadow: 0 12px 30px rgba(34,197,94,0.38); }
+
+  /* ---------- authenticated view ---------- */
+  .welcome{
+    font-size:1.35rem;
+    margin:0 0 6px 0;
+  }
+
+  .welcome-sub{
+    color:var(--muted);
+    font-size:0.92rem;
+    margin:0 0 22px 0;
+  }
+
+  .embed-box{
+    background:#0b1120;
+    border:1px solid var(--border);
+    border-left:3px solid var(--pink);
+    border-radius:10px;
+    padding:14px 16px;
+    margin-bottom:6px;
+  }
+
+  .embed-label{
+    font-size:0.72rem;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--muted);
+    margin-bottom:8px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+
+  .embed-code{
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size:0.82rem;
+    color:#f8b4d9;
+    word-break:break-all;
+    line-height:1.5;
+  }
+
+  .copy-btn{
+    background:var(--border);
+    color:var(--text);
+    border:none;
+    border-radius:6px;
+    font-size:0.7rem;
+    padding:4px 8px;
+    cursor:pointer;
+    font-weight:600;
+  }
+  .copy-btn:hover{ background:#33405f; }
+
+  .embed-hint{
+    font-size:0.78rem;
+    color:var(--muted);
+    margin: 10px 0 0 0;
+  }
+
+  /* ---------- loading skeleton ---------- */
+  .loading-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    color:var(--muted);
+    font-size:0.85rem;
+    margin-top:14px;
+  }
+
+  .spinner{
+    width:14px;height:14px;
+    border-radius:50%;
+    border:2px solid var(--border);
+    border-top-color:var(--orange);
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  [hidden]{ display:none !important; }
+
+  /* ---------- footer ---------- */
+  footer{
+    position:relative;
+    z-index:1;
+    border-top:1px solid var(--border);
+    padding:18px 24px;
+    text-align:center;
+    font-size:0.82rem;
+    color:var(--muted);
+  }
+
+  footer nav{
+    display:flex;
+    gap:18px;
+    justify-content:center;
+    flex-wrap:wrap;
+    margin-bottom:6px;
+  }
+
+  footer nav a{
+    color:var(--muted);
+    text-decoration:none;
+    transition: color 0.15s ease;
+  }
+  footer nav a:hover{ color:var(--pink); }
+
+  footer .copyright{ opacity:0.7; }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 480px){
+    header{ padding:14px 16px; }
+    .brand{ font-size:1.02rem; }
+    main{ padding:24px 14px; }
+    .card{ padding:26px 20px; }
+    h1{ font-size:1.35rem; }
+  }
+</style>
 </head>
 <body>
 
-    <!-- Header Section -->
-    <header>
-        <div class="logo">
-            <img src="111.png" alt="S-Captcha Logo" onerror="this.src='https://via.placeholder.com/40?text=Logo'">
-            S-Captcha
+<div class="verify-grid" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <img
+      src="111.png"
+      alt="S-Captcha logo"
+      onerror="this.onerror=null;this.src='111.ico';"
+    >
+    <span><span class="s-part">S-</span><span class="cap-part">Captcha</span></span>
+  </div>
+
+  <!-- Clerk mounts the user avatar/menu here when signed in -->
+  <div id="user-button"></div>
+</header>
+
+<main>
+  <div class="card">
+
+    <!-- ================= UNAUTHENTICATED VIEW ================= -->
+    <section id="logged-out-view">
+      <span class="eyebrow"><span class="dot"></span> Human verification, no database required</span>
+      <h1>S-Captcha Login</h1>
+      <p class="tagline">
+        Sign in to grab your embed snippet and start telling bots from humans —
+        without S-Captcha ever storing a single record about your visitors.
+      </p>
+
+      <button id="login-btn" class="btn btn-primary" type="button">
+        Login / Sign Up
+      </button>
+
+      <div id="clerk-loading-row" class="loading-row">
+        <span class="spinner" aria-hidden="true"></span>
+        <span>Connecting to auth service…</span>
+      </div>
+    </section>
+
+    <!-- ================= AUTHENTICATED VIEW ================= -->
+    <section id="logged-in-view" hidden>
+      <span class="eyebrow"><span class="dot"></span> You're verified</span>
+      <p class="welcome" id="welcome-message">Welcome! 😎</p>
+      <p class="welcome-sub">Drop this one line into your site's &lt;head&gt; to turn on S-Captcha.</p>
+
+      <div class="embed-box">
+        <div class="embed-label">
+          <span>Embed snippet</span>
+          <button class="copy-btn" id="copy-snippet-btn" type="button">Copy</button>
         </div>
-        <!-- Clerk User Profile Button will appear here -->
-        <div id="user-button"></div>
-    </header>
+        <div class="embed-code" id="embed-code">&lt;script src="https://www.scaptua.duckdns.org/widget.js" async defer&gt;&lt;/script&gt;</div>
+      </div>
+      <p class="embed-hint">Paste it once — S-Captcha loads asynchronously and won't slow your page down.</p>
 
-    <!-- Main Content Section -->
-    <main>
-        <div class="card">
-            
-            <!-- When User is NOT Logged In -->
-            <div id="unauth-view">
-                <h1>Welcome to S-Captcha</h1>
-                <p style="color: #cbd5e1; margin-bottom: 20px;">The smartest zero-database captcha system. Please login or sign up to get your setup code.</p>
-                <button class="btn" id="login-btn">Login / Sign Up</button>
-            </div>
+      <a class="btn btn-success" href="https://www.dashboard.scaptua.duckdns.org/" target="_blank" rel="noopener noreferrer">
+        Go to Dashboard
+      </a>
+    </section>
 
-            <!-- When User IS Logged In -->
-            <div id="auth-view">
-                <h1 id="welcome-text">Welcome Developer!</h1>
-                
-                <div class="instruction-box">
-                    <h3 style="color: #f97316; margin-bottom: 10px;">How to use S-Captcha:</h3>
-                    <p>It's incredibly easy! Just copy the script tag below and paste it anywhere inside the <b>&lt;head&gt;</b> or <b>&lt;body&gt;</b> of your website's HTML file.</p>
-                    <p>Our smart system will automatically detect and protect your site from bots.</p>
-                    <code>&lt;script src="https://www.scaptua.duckdns.org/widget.js" async defer&gt;&lt;/script&gt;</code>
-                </div>
+  </div>
+</main>
 
-                <a href="https://www.dashboard.scaptua.duckdns.org/" class="btn btn-green">Go to Dashboard</a>
-            </div>
+<footer>
+  <nav>
+    <a href="https://www.scaptua.duckdns.org/about.html" target="_blank" rel="noopener noreferrer">About</a>
+    <a href="https://www.scaptua.duckdns.org/terms.html" target="_blank" rel="noopener noreferrer">Terms</a>
+    <a href="https://www.scaptua.duckdns.org/privacy.html" target="_blank" rel="noopener noreferrer">Privacy</a>
+  </nav>
+  <div class="copyright">© <span id="year"></span> S-Captcha by Shubhomoy. Zero-database, by design.</div>
+</footer>
 
-        </div>
-    </main>
+<script>
+  document.getElementById('year').textContent = new Date().getFullYear();
 
-    <!-- Footer Section -->
-    <footer>
-        <a href="https://www.scaptua.duckdns.org/about.html" target="_blank">About</a>
-        <a href="https://www.scaptua.duckdns.org/terms.html" target="_blank">Terms</a>
-        <a href="https://www.scaptua.duckdns.org/privacy.html" target="_blank">Privacy</a>
-    </footer>
+  // Elements
+  var loggedOutView   = document.getElementById('logged-out-view');
+  var loggedInView    = document.getElementById('logged-in-view');
+  var loginBtn        = document.getElementById('login-btn');
+  var loadingRow      = document.getElementById('clerk-loading-row');
+  var welcomeMessage  = document.getElementById('welcome-message');
+  var userButtonDiv   = document.getElementById('user-button');
+  var copySnippetBtn  = document.getElementById('copy-snippet-btn');
+  var embedCode       = document.getElementById('embed-code');
 
-    <!-- Clerk Logic integration -->
-    <script>
-        window.addEventListener('load', async function () {
-            // Wait for Clerk to initialize
-            await Clerk.load();
+  // Guardrail: default HTML state already shows the logged-out view
+  // and a usable Login button, so nothing is stuck on "Loading..."
+  // even if Clerk is slow to initialize. We just refine the UI once
+  // Clerk actually reports a status.
 
-            const unauthView = document.getElementById('unauth-view');
-            const authView = document.getElementById('auth-view');
-            const userButtonDiv = document.getElementById('user-button');
-            const welcomeText = document.getElementById('welcome-text');
-            const loginBtn = document.getElementById('login-btn');
+  function renderSignedOut() {
+    loggedOutView.hidden = false;
+    loggedInView.hidden = true;
+    loadingRow.hidden = true;
+  }
 
-            if (Clerk.user) {
-                // User is Logged In
-                authView.style.display = 'block';
-                unauthView.style.display = 'none';
-                
-                // Show profile picture top right
-                Clerk.mountUserButton(userButtonDiv);
-                
-                // Greet user
-                welcomeText.innerText = `Welcome back, ${Clerk.user.firstName || 'Developer'}! 😎`;
-            } else {
-                // User is NOT Logged In
-                unauthView.style.display = 'block';
-                authView.style.display = 'none';
-                
-                // Handle Login Button Click
-                loginBtn.addEventListener('click', () => {
-                    Clerk.openSignIn();
-                });
-            }
+  function renderSignedIn(user) {
+    loggedOutView.hidden = true;
+    loggedInView.hidden = false;
+    var firstName = (user && (user.firstName || (user.fullName ? user.fullName.split(' ')[0] : null))) || 'there';
+    welcomeMessage.textContent = 'Welcome, ' + firstName + '! 😎';
+  }
+
+  function mountUserButton() {
+    try {
+      if (window.Clerk && window.Clerk.mountUserButton && userButtonDiv) {
+        userButtonDiv.innerHTML = '';
+        window.Clerk.mountUserButton(userButtonDiv);
+      }
+    } catch (e) {
+      console.error('S-Captcha: could not mount Clerk user button', e);
+    }
+  }
+
+  function refreshAuthState() {
+    if (window.Clerk && window.Clerk.user) {
+      renderSignedIn(window.Clerk.user);
+      mountUserButton();
+    } else {
+      renderSignedOut();
+      if (userButtonDiv) userButtonDiv.innerHTML = '';
+    }
+  }
+
+  loginBtn.addEventListener('click', function () {
+    if (window.Clerk && window.Clerk.openSignIn) {
+      window.Clerk.openSignIn();
+    } else {
+      // Clerk not ready yet — keep button usable, just retry shortly.
+      loadingRow.hidden = false;
+      loadingRow.querySelector('span:last-child').textContent = 'Still connecting… try again in a moment.';
+      var attempts = 0;
+      var retry = setInterval(function () {
+        attempts++;
+        if (window.Clerk && window.Clerk.openSignIn) {
+          clearInterval(retry);
+          loadingRow.hidden = true;
+          window.Clerk.openSignIn();
+        } else if (attempts > 20) {
+          clearInterval(retry);
+          loadingRow.querySelector('span:last-child').textContent = 'Auth service unavailable. Please refresh.';
+        }
+      }, 300);
+    }
+  });
+
+  copySnippetBtn.addEventListener('click', function () {
+    var text = embedCode.textContent;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        copySnippetBtn.textContent = 'Copied!';
+        setTimeout(function () { copySnippetBtn.textContent = 'Copy'; }, 1600);
+      }).catch(function () {
+        copySnippetBtn.textContent = 'Select & copy';
+      });
+    }
+  });
+
+  // Initialize Clerk once the SDK script has loaded.
+  function initClerkWhenReady() {
+    if (window.Clerk) {
+      window.Clerk.load()
+        .then(function () {
+          refreshAuthState();
+          if (window.Clerk.addListener) {
+            window.Clerk.addListener(function () {
+              refreshAuthState();
+            });
+          }
+        })
+        .catch(function (err) {
+          console.error('S-Captcha: Clerk failed to load', err);
+          // Fail safe: keep the logged-out view fully usable.
+          renderSignedOut();
+          loadingRow.hidden = true;
         });
-    </script>
+    } else {
+      // SDK script tag hasn't attached window.Clerk yet — poll briefly.
+      var tries = 0;
+      var poll = setInterval(function () {
+        tries++;
+        if (window.Clerk) {
+          clearInterval(poll);
+          initClerkWhenReady();
+        } else if (tries > 40) {
+          clearInterval(poll);
+          console.warn('S-Captcha: Clerk SDK did not load in time.');
+          loadingRow.hidden = true;
+        }
+      }, 250);
+    }
+  }
+
+  // Default visible state: logged-out view + working Login button.
+  renderSignedOut();
+  loadingRow.hidden = false;
+  initClerkWhenReady();
+</script>
+
 </body>
 </html>
