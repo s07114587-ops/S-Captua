@@ -9,14 +9,13 @@
 <link rel="icon" type="image/x-icon" href="111.ico">
 <link rel="shortcut icon" type="image/x-icon" href="111.ico">
 
-<!-- Clerk JS SDK -->
-<script
-  async
-  crossorigin="anonymous"
-  data-clerk-publishable-key="pk_test_YOUR_PUBLISHABLE_KEY"
-  src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
-  type="text/javascript"
-></script>
+<!--
+  NOTE: There is deliberately NO Clerk <script> tag here with a hardcoded key.
+  The Clerk publishable key is fetched at runtime from /api/config (a Vercel
+  Serverless Function reading process.env.api1), then the Clerk SDK is
+  loaded and instantiated dynamically in the script at the bottom of this
+  file. See bootstrapClerk().
+-->
 
 <style>
   :root{
@@ -52,7 +51,6 @@
     flex-direction:column;
   }
 
-  /* ---------- background grid signature ---------- */
   .verify-grid{
     position:fixed;
     inset:0;
@@ -67,7 +65,6 @@
 
   a{color:inherit;}
 
-  /* ---------- header ---------- */
   header{
     position:relative;
     z-index:2;
@@ -111,17 +108,9 @@
   #user-button{
     display:flex;
     align-items:center;
+    min-height:36px;
   }
 
-  .header-auth-placeholder{
-    width:36px;
-    height:36px;
-    border-radius:50%;
-    border:1px solid var(--border);
-    background:var(--card);
-  }
-
-  /* ---------- main ---------- */
   main{
     position:relative;
     z-index:1;
@@ -170,6 +159,12 @@
     box-shadow:0 0 0 3px rgba(34,197,94,0.18);
   }
 
+  .eyebrow.is-error .dot{
+    background:var(--red);
+    box-shadow:0 0 0 3px rgba(239,68,68,0.18);
+  }
+  .eyebrow.is-error{ color:var(--red); }
+
   h1{
     font-size:1.6rem;
     margin:0 0 8px 0;
@@ -200,13 +195,22 @@
   }
 
   .btn:active{ transform: translateY(1px) scale(0.99); }
+  .btn:disabled{ opacity:0.6; cursor:not-allowed; }
 
   .btn-primary{
     background: var(--grad-hazard);
     color:#fff;
     box-shadow: 0 10px 25px rgba(239,68,68,0.28);
   }
-  .btn-primary:hover{ box-shadow: 0 12px 30px rgba(239,68,68,0.4); }
+  .btn-primary:hover:not(:disabled){ box-shadow: 0 12px 30px rgba(239,68,68,0.4); }
+
+  .btn-outline{
+    background:transparent;
+    color:var(--text);
+    border:1px solid var(--border);
+    margin-top:10px;
+  }
+  .btn-outline:hover{ border-color:var(--orange); color:var(--orange); }
 
   .btn-success{
     background: linear-gradient(90deg, #16a34a, var(--green));
@@ -216,7 +220,6 @@
   }
   .btn-success:hover{ box-shadow: 0 12px 30px rgba(34,197,94,0.38); }
 
-  /* ---------- authenticated view ---------- */
   .welcome{
     font-size:1.35rem;
     margin:0 0 6px 0;
@@ -274,8 +277,7 @@
     margin: 10px 0 0 0;
   }
 
-  /* ---------- loading skeleton ---------- */
-  .loading-row{
+  .status-row{
     display:flex;
     align-items:center;
     gap:10px;
@@ -284,19 +286,21 @@
     margin-top:14px;
   }
 
+  .status-row.is-error{ color:#fca5a5; }
+
   .spinner{
     width:14px;height:14px;
     border-radius:50%;
     border:2px solid var(--border);
     border-top-color:var(--orange);
     animation: spin 0.7s linear infinite;
+    flex-shrink:0;
   }
 
   @keyframes spin{ to{ transform:rotate(360deg); } }
 
   [hidden]{ display:none !important; }
 
-  /* ---------- footer ---------- */
   footer{
     position:relative;
     z-index:1;
@@ -324,7 +328,6 @@
 
   footer .copyright{ opacity:0.7; }
 
-  /* ---------- responsive ---------- */
   @media (max-width: 480px){
     header{ padding:14px 16px; }
     .brand{ font-size:1.02rem; }
@@ -357,7 +360,7 @@
 
     <!-- ================= UNAUTHENTICATED VIEW ================= -->
     <section id="logged-out-view">
-      <span class="eyebrow"><span class="dot"></span> Human verification, no database required</span>
+      <span class="eyebrow" id="eyebrow-out"><span class="dot"></span> Human verification, no database required</span>
       <h1>S-Captcha Login</h1>
       <p class="tagline">
         Sign in to grab your embed snippet and start telling bots from humans —
@@ -368,10 +371,14 @@
         Login / Sign Up
       </button>
 
-      <div id="clerk-loading-row" class="loading-row">
+      <div id="status-row" class="status-row">
         <span class="spinner" aria-hidden="true"></span>
-        <span>Connecting to auth service…</span>
+        <span id="status-text">Connecting to auth service…</span>
       </div>
+
+      <button id="retry-btn" class="btn btn-outline" type="button" hidden>
+        Retry connection
+      </button>
     </section>
 
     <!-- ================= AUTHENTICATED VIEW ================= -->
@@ -407,27 +414,45 @@
 </footer>
 
 <script>
+(function () {
   document.getElementById('year').textContent = new Date().getFullYear();
 
-  // Elements
+  // ---- Elements ----
   var loggedOutView   = document.getElementById('logged-out-view');
   var loggedInView    = document.getElementById('logged-in-view');
   var loginBtn        = document.getElementById('login-btn');
-  var loadingRow      = document.getElementById('clerk-loading-row');
+  var eyebrowOut       = document.getElementById('eyebrow-out');
+  var statusRow       = document.getElementById('status-row');
+  var statusText      = document.getElementById('status-text');
+  var retryBtn        = document.getElementById('retry-btn');
   var welcomeMessage  = document.getElementById('welcome-message');
   var userButtonDiv   = document.getElementById('user-button');
   var copySnippetBtn  = document.getElementById('copy-snippet-btn');
   var embedCode       = document.getElementById('embed-code');
 
-  // Guardrail: default HTML state already shows the logged-out view
-  // and a usable Login button, so nothing is stuck on "Loading..."
-  // even if Clerk is slow to initialize. We just refine the UI once
-  // Clerk actually reports a status.
+  var clerkInstance = null;
+
+  // ---- Guardrail ----
+  // The logged-out view + a clickable Login button are the default HTML
+  // state, so the page is never a blank "Loading..." screen. Everything
+  // below only *upgrades* that default once Clerk is actually ready.
+
+  function setStatus(message, isError) {
+    statusRow.hidden = false;
+    statusRow.classList.toggle('is-error', !!isError);
+    statusRow.querySelector('.spinner').hidden = !!isError;
+    statusText.textContent = message;
+    retryBtn.hidden = !isError;
+  }
+
+  function clearStatus() {
+    statusRow.hidden = true;
+    retryBtn.hidden = true;
+  }
 
   function renderSignedOut() {
     loggedOutView.hidden = false;
     loggedInView.hidden = true;
-    loadingRow.hidden = true;
   }
 
   function renderSignedIn(user) {
@@ -439,9 +464,9 @@
 
   function mountUserButton() {
     try {
-      if (window.Clerk && window.Clerk.mountUserButton && userButtonDiv) {
+      if (clerkInstance && clerkInstance.mountUserButton && userButtonDiv) {
         userButtonDiv.innerHTML = '';
-        window.Clerk.mountUserButton(userButtonDiv);
+        clerkInstance.mountUserButton(userButtonDiv);
       }
     } catch (e) {
       console.error('S-Captcha: could not mount Clerk user button', e);
@@ -449,8 +474,8 @@
   }
 
   function refreshAuthState() {
-    if (window.Clerk && window.Clerk.user) {
-      renderSignedIn(window.Clerk.user);
+    if (clerkInstance && clerkInstance.user) {
+      renderSignedIn(clerkInstance.user);
       mountUserButton();
     } else {
       renderSignedOut();
@@ -458,26 +483,73 @@
     }
   }
 
-  loginBtn.addEventListener('click', function () {
-    if (window.Clerk && window.Clerk.openSignIn) {
-      window.Clerk.openSignIn();
-    } else {
-      // Clerk not ready yet — keep button usable, just retry shortly.
-      loadingRow.hidden = false;
-      loadingRow.querySelector('span:last-child').textContent = 'Still connecting… try again in a moment.';
-      var attempts = 0;
-      var retry = setInterval(function () {
-        attempts++;
-        if (window.Clerk && window.Clerk.openSignIn) {
-          clearInterval(retry);
-          loadingRow.hidden = true;
-          window.Clerk.openSignIn();
-        } else if (attempts > 20) {
-          clearInterval(retry);
-          loadingRow.querySelector('span:last-child').textContent = 'Auth service unavailable. Please refresh.';
+  // ---- Step 1: fetch the publishable key from our own API ----
+  // (never a hardcoded key — /api/config reads process.env.api1 server-side)
+  function fetchPublishableKey() {
+    return fetch('/api/config', { cache: 'no-store' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('config endpoint returned ' + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        if (!data || !data.publishableKey) throw new Error('publishable key missing in /api/config response');
+        return data.publishableKey;
+      });
+  }
+
+  // ---- Step 2: load the Clerk SDK script (no key baked into the tag) ----
+  function loadClerkScript() {
+    return new Promise(function (resolve, reject) {
+      if (window.Clerk && typeof window.Clerk === 'function') {
+        resolve();
+        return;
+      }
+      var script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js';
+      script.async = true;
+      script.crossOrigin = 'anonymous';
+      script.onload = function () { resolve(); };
+      script.onerror = function () { reject(new Error('Clerk SDK script failed to load')); };
+      document.head.appendChild(script);
+    });
+  }
+
+  // ---- Step 3: instantiate Clerk with the fetched key and load it ----
+  function bootstrapClerk() {
+    setStatus('Connecting to auth service…', false);
+
+    fetchPublishableKey()
+      .then(function (key) {
+        return loadClerkScript().then(function () { return key; });
+      })
+      .then(function (key) {
+        clerkInstance = new window.Clerk(key);
+        return clerkInstance.load();
+      })
+      .then(function () {
+        clearStatus();
+        refreshAuthState();
+        if (clerkInstance.addListener) {
+          clerkInstance.addListener(function () { refreshAuthState(); });
         }
-      }, 300);
+      })
+      .catch(function (err) {
+        console.error('S-Captcha: Clerk failed to initialize', err);
+        renderSignedOut();
+        setStatus('Auth service unavailable. Please retry.', true);
+      });
+  }
+
+  loginBtn.addEventListener('click', function () {
+    if (clerkInstance && clerkInstance.openSignIn) {
+      clerkInstance.openSignIn();
+    } else {
+      setStatus('Still connecting… hang tight.', false);
     }
+  });
+
+  retryBtn.addEventListener('click', function () {
+    bootstrapClerk();
   });
 
   copySnippetBtn.addEventListener('click', function () {
@@ -492,45 +564,10 @@
     }
   });
 
-  // Initialize Clerk once the SDK script has loaded.
-  function initClerkWhenReady() {
-    if (window.Clerk) {
-      window.Clerk.load()
-        .then(function () {
-          refreshAuthState();
-          if (window.Clerk.addListener) {
-            window.Clerk.addListener(function () {
-              refreshAuthState();
-            });
-          }
-        })
-        .catch(function (err) {
-          console.error('S-Captcha: Clerk failed to load', err);
-          // Fail safe: keep the logged-out view fully usable.
-          renderSignedOut();
-          loadingRow.hidden = true;
-        });
-    } else {
-      // SDK script tag hasn't attached window.Clerk yet — poll briefly.
-      var tries = 0;
-      var poll = setInterval(function () {
-        tries++;
-        if (window.Clerk) {
-          clearInterval(poll);
-          initClerkWhenReady();
-        } else if (tries > 40) {
-          clearInterval(poll);
-          console.warn('S-Captcha: Clerk SDK did not load in time.');
-          loadingRow.hidden = true;
-        }
-      }, 250);
-    }
-  }
-
-  // Default visible state: logged-out view + working Login button.
+  // Default visible state, then kick off the real init.
   renderSignedOut();
-  loadingRow.hidden = false;
-  initClerkWhenReady();
+  bootstrapClerk();
+})();
 </script>
 
 </body>
