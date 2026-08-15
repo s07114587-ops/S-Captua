@@ -1,0 +1,16 @@
+name: Ping S-Captcha Server
+
+on:
+  schedule:
+    # প্রতি ৫ মিনিট পরপর রান করার জন্য ক্রন জব
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # হাত দিয়ে ম্যানুয়ালি টেস্ট করার বাটন রাখার জন্য
+
+jobs:
+  ping-server:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send HTTP GET Request to Render
+        run: |
+          curl -I https://s-captua.onrender.com/
+          echo "Ping sent successfully to S-Captcha server!"
