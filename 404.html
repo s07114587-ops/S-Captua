@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 Page Not Found | S-Captua</title>
+    <style>
+        /* Base Dark Theme Styling */
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        /* Header Navigation */
+        header {
+            background-color: #1e1e1e;
+            padding: 15px 20px;
+            text-align: center;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        header nav a, footer nav a {
+            color: #cccccc;
+            text-decoration: none;
+            margin: 0 15px;
+            font-size: 14px;
+            transition: color 0.3s ease;
+        }
+
+        header nav a:hover, footer nav a:hover {
+            color: #ff4444;
+        }
+
+        /* Main Content Container */
+        main {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .error-container {
+            background-color: #1e1e1e;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border-top: 4px solid #ff4444;
+            max-width: 600px;
+            width: 90%;
+            text-align: center;
+        }
+
+        h1 {
+            color: #ff4444;
+            font-size: 32px;
+            margin-top: 0;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+
+        h2 {
+            font-size: 16px;
+            font-weight: 400;
+            line-height: 1.6;
+            color: #cccccc;
+            margin-bottom: 25px;
+        }
+
+        .github-link {
+            display: inline-block;
+            margin-top: 15px;
+            color: #0088ff;
+            text-decoration: none;
+            font-size: 14px;
+            word-break: break-all;
+        }
+
+        .github-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Footer Styling */
+        footer {
+            background-color: #1e1e1e;
+            padding: 20px;
+            text-align: center;
+            border-top: 1px solid #2a2a2a;
+            font-size: 12px;
+            color: #777777;
+        }
+
+        footer nav {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header>
+        <nav>
+            <a href="https://www.scaptua.duckdns.org/about.html">About</a>
+            <a href="https://www.scaptua.duckdns.org/terms.html">Terms</a>
+            <a href="https://www.scaptua.duckdns.org/privacy.html">Privacy</a>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main>
+        <div class="error-container">
+            <h1>404 Error</h1>
+            <h2>Page Not Found</h2>
+            <p>If you want to see the source code, visit:</p>
+            <a class="github-link" href="https://github.com/s07114587-ops/S-Captua/" target="_blank" rel="noopener noreferrer">
+                https://github.com/s07114587-ops/S-Captua/
+            </a>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <nav>
+            <a href="https://www.scaptua.duckdns.org/about.html">About</a>
+            <a href="https://www.scaptua.duckdns.org/terms.html">Terms</a>
+            <a href="https://www.scaptua.duckdns.org/privacy.html">Privacy</a>
+        </nav>
+        <p>&copy; S-Captua. All rights reserved.</p>
+    </footer>
+
+</body>
+</html>
