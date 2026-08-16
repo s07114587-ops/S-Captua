@@ -18,6 +18,7 @@ HTML_CONTENT = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<meta name="google-site-verification" content="E5EbStfGTng9SmGI0gozjEJ16zMqAd9x7_BRZh6dL14" />
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>S-Captcha Admin & Live Logs</title>
