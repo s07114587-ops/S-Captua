@@ -328,6 +328,17 @@
 
   footer .copyright{ opacity:0.7; }
 
+  footer .bug-report{
+    opacity:0.6;
+    margin-top:4px;
+    font-size:0.78rem;
+  }
+  footer .bug-report a{
+    color:var(--pink);
+    text-decoration:none;
+  }
+  footer .bug-report a:hover{ text-decoration:underline; }
+
   @media (max-width: 480px){
     header{ padding:14px 16px; }
     .brand{ font-size:1.02rem; }
@@ -411,6 +422,7 @@
     <a href="https://www.scaptua.duckdns.org/privacy.html" target="_blank" rel="noopener noreferrer">Privacy</a>
   </nav>
   <div class="copyright">© <span id="year"></span> S-Captcha by Shubhomoy. Zero-database, by design.</div>
+  <div class="bug-report">Found a bug? Contact <a href="mailto:sgdev@netc.fr">sgdev@netc.fr</a></div>
 </footer>
 
 <script>
