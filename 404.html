@@ -3,135 +3,262 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>404 Page Not Found | S-Captua</title>
+    <title>404 - Page Not Found | S-Captcha</title>
     <style>
-        /* Base Dark Theme Styling */
-        body {
-            background-color: #121212;
-            color: #ffffff;
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        * {
             margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Consolas', 'Fira Code', monospace;
+        }
+
+        body {
+            background-color: #030308;
+            color: #00ffcc;
+            height: 100vh;
             display: flex;
             flex-direction: column;
-            min-height: 100vh;
+            justify-content: space-between;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
         }
 
-        /* Header Navigation */
-        header {
-            background-color: #1e1e1e;
-            padding: 15px 20px;
+        /* Canvas for Matrix Rain */
+        #matrixCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            opacity: 0.25;
+        }
+
+        /* Nav Header & Footer */
+        header, footer {
+            position: relative;
+            z-index: 10;
+            width: 100%;
             text-align: center;
-            border-bottom: 1px solid #2a2a2a;
+            padding: 20px;
         }
 
-        header nav a, footer nav a {
-            color: #cccccc;
+        .nav-links a {
+            color: #888;
             text-decoration: none;
             margin: 0 15px;
             font-size: 14px;
-            transition: color 0.3s ease;
+            transition: 0.3s;
         }
 
-        header nav a:hover, footer nav a:hover {
-            color: #ff4444;
+        .nav-links a:hover {
+            color: #00ffcc;
+            text-shadow: 0 0 8px #00ffcc;
         }
 
-        /* Main Content Container */
-        main {
-            flex: 1;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-
-        .error-container {
-            background-color: #1e1e1e;
+        /* Main Glowing 404 Box */
+        .container {
+            position: relative;
+            z-index: 10;
+            background: rgba(10, 10, 20, 0.85);
+            backdrop-filter: blur(12px);
             padding: 40px;
-            border-radius: 8px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-            border-top: 4px solid #ff4444;
-            max-width: 600px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 550px;
             width: 90%;
-            text-align: center;
+            border: 1px solid rgba(255, 0, 85, 0.5);
+            box-shadow: 0 0 25px rgba(255, 0, 85, 0.2), inset 0 0 15px rgba(255, 0, 85, 0.1);
+            animation: float 4s ease-in-out infinite;
         }
 
-        h1 {
-            color: #ff4444;
-            font-size: 32px;
-            margin-top: 0;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
         }
 
-        h2 {
-            font-size: 16px;
-            font-weight: 400;
-            line-height: 1.6;
-            color: #cccccc;
-            margin-bottom: 25px;
-        }
-
-        .github-link {
-            display: inline-block;
-            margin-top: 15px;
-            color: #0088ff;
-            text-decoration: none;
-            font-size: 14px;
-            word-break: break-all;
-        }
-
-        .github-link:hover {
-            text-decoration: underline;
-        }
-
-        /* Footer Styling */
-        footer {
-            background-color: #1e1e1e;
-            padding: 20px;
-            text-align: center;
-            border-top: 1px solid #2a2a2a;
-            font-size: 12px;
-            color: #777777;
-        }
-
-        footer nav {
+        /* Glitch Animation for 404 */
+        .glitch {
+            font-size: 50px;
+            font-weight: bold;
+            color: #ff0055;
+            position: relative;
+            text-shadow: 0 0 10px #ff0055;
             margin-bottom: 10px;
+        }
+
+        .glitch::before, .glitch::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            clip: rect(0, 0, 0, 0);
+        }
+
+        .glitch::before {
+            left: -2px;
+            text-shadow: 2px 0 #00ffcc;
+            animation: glitch-anim 2s infinite linear alternate-reverse;
+        }
+
+        .glitch::after {
+            left: 2px;
+            text-shadow: -2px 0 #ff0055;
+            animation: glitch-anim2 3s infinite linear alternate-reverse;
+        }
+
+        @keyframes glitch-anim {
+            0% { clip: rect(20px, 9999px, 15px, 0); }
+            20% { clip: rect(50px, 9999px, 80px, 0); }
+            40% { clip: rect(10px, 9999px, 40px, 0); }
+            60% { clip: rect(70px, 9999px, 90px, 0); }
+            80% { clip: rect(30px, 9999px, 10px, 0); }
+            100% { clip: rect(60px, 9999px, 50px, 0); }
+        }
+
+        @keyframes glitch-anim2 {
+            0% { clip: rect(40px, 9999px, 20px, 0); }
+            20% { clip: rect(10px, 9999px, 60px, 0); }
+            40% { clip: rect(80px, 9999px, 30px, 0); }
+            60% { clip: rect(30px, 9999px, 70px, 0); }
+            80% { clip: rect(90px, 9999px, 10px, 0); }
+            100% { clip: rect(20px, 9999px, 50px, 0); }
+        }
+
+        p.sub-text {
+            color: #aaa;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        /* Code Link & Home Button */
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            align-items: center;
+            margin-top: 20px;
+        }
+
+        .btn-home {
+            background: linear-gradient(45deg, #00ffcc, #00997a);
+            color: #000;
+            padding: 12px 25px;
+            font-size: 13px;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: 0.3s;
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.4);
+        }
+
+        .btn-home:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 25px rgba(0, 255, 204, 0.8);
+        }
+
+        .code-link {
+            color: #00ffcc;
+            font-size: 12px;
+            text-decoration: none;
+            word-break: break-all;
+            opacity: 0.8;
+            transition: 0.3s;
+        }
+
+        .code-link:hover {
+            opacity: 1;
+            text-shadow: 0 0 5px #00ffcc;
+        }
+
+        footer p {
+            font-size: 11px;
+            color: #555;
         }
     </style>
 </head>
 <body>
 
-    <!-- Header -->
+    <!-- Matrix Background Canvas -->
+    <canvas id="matrixCanvas"></canvas>
+
+    <!-- Top Navigation -->
     <header>
-        <nav>
-            <a href="https://www.scaptua.duckdns.org/about.html">About</a>
-            <a href="https://www.scaptua.duckdns.org/terms.html">Terms</a>
-            <a href="https://www.scaptua.duckdns.org/privacy.html">Privacy</a>
+        <nav class="nav-links">
+            <a href="/about.html">About</a>
+            <a href="/terms.html">Terms</a>
+            <a href="/privacy.html">Privacy</a>
         </nav>
     </header>
 
-    <!-- Main Content -->
-    <main>
-        <div class="error-container">
-            <h1>404 Error</h1>
-            <h2>Page Not Found</h2>
-            <p>If you want to see the source code, visit:</p>
-            <a class="github-link" href="https://github.com/s07114587-ops/S-Captua/" target="_blank" rel="noopener noreferrer">
-                https://github.com/s07114587-ops/S-Captua/
+    <!-- 404 Main Box -->
+    <div class="container">
+        <div class="glitch" data-text="404 ERROR">404 ERROR</div>
+        <p class="sub-text">System Exception: Target Page Not Found</p>
+        
+        <p style="font-size: 12px; color: #777;">If you want to inspect the source code, visit:</p>
+        
+        <div class="btn-group">
+            <a class="code-link" href="https://github.com/s07114587-ops/S-Captcha/" target="_blank">
+                github.com/s07114587-ops/S-Captcha/
             </a>
+            
+            <a href="/" class="btn-home">⚡ RETURN TO SAFETY (HOME)</a>
         </div>
-    </main>
+    </div>
 
     <!-- Footer -->
     <footer>
-        <nav>
-            <a href="https://www.scaptua.duckdns.org/about.html">About</a>
-            <a href="https://www.scaptua.duckdns.org/terms.html">Terms</a>
-            <a href="https://www.scaptua.duckdns.org/privacy.html">Privacy</a>
+        <nav class="nav-links" style="margin-bottom: 8px;">
+            <a href="/about.html">About</a>
+            <a href="/terms.html">Terms</a>
+            <a href="/privacy.html">Privacy</a>
         </nav>
-        <p>&copy; S-Captua. All rights reserved.</p>
+        <p>© S-Captcha. All rights reserved.</p>
     </footer>
 
+    <!-- Matrix Rain JavaScript -->
+    <script>
+        const canvas = document.getElementById('matrixCanvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const chars = '01SCAPTCHA404ERROR';
+        const fontSize = 12;
+        const columns = canvas.width / fontSize;
+        const drops = Array(Math.floor(columns)).fill(1);
+
+        function drawMatrix() {
+            ctx.fillStyle = 'rgba(3, 3, 8, 0.08)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#00ffcc';
+            ctx.font = fontSize + 'px monospace';
+
+            for (let i = 0; i < drops.length; i++) {
+                const text = chars.charAt(Math.floor(Math.random() * chars.length));
+                ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+                if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            }
+        }
+
+        setInterval(drawMatrix, 35);
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+    </script>
 </body>
 </html>
