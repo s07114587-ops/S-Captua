@@ -231,6 +231,42 @@
     margin:0 0 22px 0;
   }
 
+  .widget-picker{
+    margin-bottom:14px;
+  }
+
+  .widget-options{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  .widget-pill{
+    flex:1 1 auto;
+    min-width:70px;
+    background:#0b1120;
+    color:var(--muted);
+    border:1px solid var(--border);
+    border-radius:999px;
+    padding:8px 12px;
+    font-size:0.8rem;
+    font-weight:600;
+    cursor:pointer;
+    text-align:center;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  }
+
+  .widget-pill:hover{
+    border-color:var(--orange);
+    color:var(--text);
+  }
+
+  .widget-pill.is-active{
+    color:#fff;
+    border-color:transparent;
+    background: var(--grad-brand);
+  }
+
   .embed-box{
     background:#0b1120;
     border:1px solid var(--border);
@@ -398,6 +434,16 @@
       <p class="welcome" id="welcome-message">Welcome! 😎</p>
       <p class="welcome-sub">Drop this one line into your site's &lt;head&gt; to turn on S-Captcha.</p>
 
+      <div class="widget-picker">
+        <div class="embed-label" style="margin-bottom:10px;">Widget style</div>
+        <div class="widget-options" id="widget-options" role="tablist">
+          <button type="button" class="widget-pill is-active" data-url="https://www.scaptua.duckdns.org/widget.js" role="tab" aria-selected="true">Default</button>
+          <button type="button" class="widget-pill" data-url="https://www.scaptua.duckdns.org/1-widgit.js" role="tab" aria-selected="false">White</button>
+          <button type="button" class="widget-pill" data-url="https://www.scaptua.duckdns.org/2-widgit.js" role="tab" aria-selected="false">Black</button>
+          <button type="button" class="widget-pill" data-url="https://www.scaptua.duckdns.org/3-widgit.js" role="tab" aria-selected="false">RGB</button>
+        </div>
+      </div>
+
       <div class="embed-box">
         <div class="embed-label">
           <span>Embed snippet</span>
@@ -441,6 +487,7 @@
   var userButtonDiv   = document.getElementById('user-button');
   var copySnippetBtn  = document.getElementById('copy-snippet-btn');
   var embedCode       = document.getElementById('embed-code');
+  var widgetOptions   = document.getElementById('widget-options');
 
   var clerkInstance = null;
 
@@ -589,6 +636,22 @@
         copySnippetBtn.textContent = 'Select & copy';
       });
     }
+  });
+
+  widgetOptions.addEventListener('click', function (e) {
+    var pill = e.target.closest('.widget-pill');
+    if (!pill) return;
+
+    var pills = widgetOptions.querySelectorAll('.widget-pill');
+    pills.forEach(function (p) {
+      p.classList.remove('is-active');
+      p.setAttribute('aria-selected', 'false');
+    });
+    pill.classList.add('is-active');
+    pill.setAttribute('aria-selected', 'true');
+
+    var url = pill.getAttribute('data-url');
+    embedCode.textContent = '<script src="' + url + '" async defer><' + '/script>';
   });
 
   // Default visible state, then kick off the real init.
