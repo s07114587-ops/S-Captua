@@ -110,6 +110,7 @@ HTML_CONTENT = """
                 if (data.logs && data.logs.length > 0) {
                     data.logs.forEach(log => {
                         const color = log.type === 'Permanent' ? '#ff007f' : '#00ffcc';
+                        // ✅ FIX: Using log.ipHash instead of log.ip
                         tbody.innerHTML += `<tr>
                             <td style="color:${color}; font-weight:bold;">${log.type}</td>
                             <td style="color:#aaa;">${log.ipHash.substring(0,6)}...</td>
@@ -184,27 +185,6 @@ HTML_CONTENT = """
                 resDiv.style.color = "#ff007f";
             }
         }
-    </script>
-    
-    <!-- Local Storage Security Gate by Shubhomoy -->
-    <script>
-      window.addEventListener('DOMContentLoaded', () => {
-        const isLoggedIn = localStorage.getItem("scap_user_logged_in");
-
-        if (isLoggedIn !== "true") {
-          document.body.innerHTML = `
-            <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #05050a; color: #ff007f; font-family: 'Consolas', monospace; text-align: center; padding: 20px;">
-                <div style="border: 1px solid #ff007f; padding: 40px; border-radius: 12px; background: rgba(20, 20, 35, 0.9); box-shadow: 0 0 30px rgba(255, 0, 127, 0.2);">
-                    <h2 style="margin-bottom: 15px; font-size: 28px; text-shadow: 0 0 10px rgba(255,0,127,0.6);">⛔ Access Restricted</h2>
-                    <p style="font-size: 16px; color: #8b96ad; line-height: 1.8;">
-                        Please turn on cookies and go to <br>
-                        <a href="https://scaptua.duckdns.org" style="color: #00ffcc; font-weight: bold; text-decoration: none; font-size: 20px; text-shadow: 0 0 8px rgba(0,255,204,0.4);">scaptua.duckdns.org</a>
-                    </p>
-                </div>
-            </div>
-          `;
-        }
-      });
     </script>
 </body>
 </html>
