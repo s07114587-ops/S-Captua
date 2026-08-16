@@ -497,36 +497,51 @@
       });
   }
 
-  // ---- Step 2: load the Clerk SDK script (no key baked into the tag) ----
-  function loadClerkScript() {
+  // Clerk publishable keys are "pk_test_" or "pk_live_" followed by a
+  // base64-encoded string that decodes to "<your-frontend-api-domain>$".
+  // Clerk's CDN bundle MUST be loaded from that exact domain — a generic
+  // CDN (jsdelivr/unpkg) will not work, because that domain is how the
+  // script knows which Clerk instance/environment to talk to.
+  function getFrontendApiFromKey(key) {
+    var match = key.match(/^pk_(test|live)_(.+)$/);
+    if (!match) throw new Error('Publishable key has an unexpected format: ' + key);
+    var decoded = atob(match[2]); // e.g. "your-app-name.clerk.accounts.dev$"
+    return decoded.replace(/\$$/, '');
+  }
+
+  // ---- Step 2: load the Clerk SDK script from the CORRECT Frontend API domain ----
+  function loadClerkScript(key) {
     return new Promise(function (resolve, reject) {
-      if (window.Clerk && typeof window.Clerk === 'function') {
-        resolve();
-        return;
-      }
+      var frontendApi = getFrontendApiFromKey(key);
       var script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js';
+      script.setAttribute('data-clerk-publishable-key', key);
       script.async = true;
       script.crossOrigin = 'anonymous';
-      script.onload = function () { resolve(); };
-      script.onerror = function () { reject(new Error('Clerk SDK script failed to load')); };
+      script.src = 'https://' + frontendApi + '/npm/@clerk/clerk-js@5/dist/clerk.browser.js';
+      script.addEventListener('load', function () { resolve(); });
+      script.addEventListener('error', function () {
+        reject(new Error('Clerk SDK script failed to load from ' + frontendApi));
+      });
       document.head.appendChild(script);
     });
   }
 
-  // ---- Step 3: instantiate Clerk with the fetched key and load it ----
+  // ---- Step 3: window.Clerk already exists once the script above loads
+  // (it self-initializes from its own data-clerk-publishable-key attribute)
+  // — we just have to call .load() on it. No "new Clerk()" needed here.
   function bootstrapClerk() {
     setStatus('Connecting to auth service…', false);
 
     fetchPublishableKey()
       .then(function (key) {
-        return loadClerkScript().then(function () { return key; });
-      })
-      .then(function (key) {
-        clerkInstance = new window.Clerk(key);
-        return clerkInstance.load();
+        return loadClerkScript(key);
       })
       .then(function () {
+        if (!window.Clerk) throw new Error('window.Clerk was not set after script load');
+        return window.Clerk.load();
+      })
+      .then(function () {
+        clerkInstance = window.Clerk;
         clearStatus();
         refreshAuthState();
         if (clerkInstance.addListener) {
