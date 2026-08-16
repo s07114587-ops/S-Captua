@@ -1,4 +1,5 @@
 import os
+import base64
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,44 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ---------------------------------------------------------------------------
+# Clerk gate config
+# ---------------------------------------------------------------------------
+# Set these in your host's environment variables (Render/Railway/etc):
+#   CLERK_PUBLISHABLE_KEY = pk_live_...   (same key your main site uses)
+#   ADMIN_EMAILS          = you@example.com,teammate@example.com
+#
+# CLERK_PUBLISHABLE_KEY is safe to expose to the browser (that's what it's
+# for). ADMIN_EMAILS is the actual gate: only signed-in Clerk users whose
+# email is in this list get to see the dashboard.
+CLERK_PUBLISHABLE_KEY = os.environ.get("CLERK_PUBLISHABLE_KEY", "")
+ADMIN_EMAILS = [
+    e.strip().lower()
+    for e in os.environ.get("ADMIN_EMAILS", "").split(",")
+    if e.strip()
+]
+
+
+def _clerk_frontend_api(publishable_key: str) -> str:
+    """Publishable keys are pk_(test|live)_<base64(frontend-api-domain + '$')>."""
+    try:
+        _, _, encoded = publishable_key.split("_", 2)
+        padded = encoded + "=" * (-len(encoded) % 4)
+        return base64.b64decode(padded).decode("utf-8").rstrip("$")
+    except Exception:
+        return ""
+
+
+CLERK_FRONTEND_API = _clerk_frontend_api(CLERK_PUBLISHABLE_KEY) if CLERK_PUBLISHABLE_KEY else ""
+
+CLERK_SCRIPT_TAG = (
+    '<script async crossorigin="anonymous" '
+    'data-clerk-publishable-key="{key}" '
+    'src="https://{domain}/npm/@clerk/clerk-js@5/dist/clerk.browser.js"></script>'
+).format(key=CLERK_PUBLISHABLE_KEY, domain=CLERK_FRONTEND_API) if CLERK_FRONTEND_API else (
+    '<!-- CLERK_PUBLISHABLE_KEY env var is not set: the admin gate cannot load Clerk. -->'
+)
+
 HTML_CONTENT = """
 <!DOCTYPE html>
 <html lang="en">
@@ -22,6 +61,7 @@ HTML_CONTENT = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>S-Captcha Admin & Live Logs</title>
+    __CLERK_SCRIPT_TAG__
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Consolas', 'Segoe UI', monospace; }
         body { background-color: #05050a; color: #00ffcc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; background-image: radial-gradient(#141428 1px, transparent 1px); background-size: 20px 20px; }
@@ -40,11 +80,46 @@ HTML_CONTENT = """
         th { color: #ff007f; text-transform: uppercase; border-bottom: 2px solid #ff007f; }
         .select-btn { background: #00ffcc; color: #000; padding: 5px 10px; font-size: 10px; border-radius: 4px; cursor: pointer; border: none; font-weight: bold; }
         #res { margin-top: 15px; font-weight: bold; padding: 12px; border-radius: 6px; text-align: center; display: none; }
+
+        /* ---- Clerk auth gate ---- */
+        #scap-gate {
+            width: 100%; max-width: 420px; background: rgba(20, 20, 35, 0.9);
+            backdrop-filter: blur(10px); padding: 34px 28px; border-radius: 16px;
+            border: 1px solid #ff007f; box-shadow: 0 0 30px rgba(255, 0, 127, 0.18);
+            text-align: center;
+        }
+        #scap-gate h2 { color: #ff007f; font-size: 18px; margin-bottom: 8px; text-shadow: 0 0 10px rgba(255,0,127,0.6); }
+        #scap-gate p { color: #8b96ad; font-size: 12px; margin-bottom: 22px; line-height: 1.5; }
+        #scap-gate button { background: linear-gradient(45deg, #ff007f, #b30059); }
+        #scap-status { margin-top: 16px; font-size: 11px; color: #8b96ad; }
+        #scap-status.is-error { color: #ff007f; }
+        #scap-account {
+            position: fixed; top: 16px; right: 16px; display: flex;
+            align-items: center; gap: 10px; z-index: 20;
+        }
+        #scap-user-button { min-width: 32px; min-height: 32px; }
+        [hidden] { display: none !important; }
     </style>
 </head>
+
 <body>
+    <div id="scap-account" hidden>
+        <div id="scap-user-button"></div>
+    </div>
+
+    <!-- Shown until Clerk confirms the visitor is a signed-in admin -->
+    <div id="scap-gate">
+        <h2>🔒 Restricted Access</h2>
+        <p>This is the S-Captcha control engine. Sign in with an authorized admin account to continue.</p>
+        <button id="scap-signin-btn" type="button">Sign In</button>
+        <div id="scap-status">Connecting to auth service…</div>
+    </div>
+
+    <!-- Real dashboard, hidden until the gate above passes -->
+    <div id="scap-app" hidden>
     <div class="container">
         <div class="header"><h1>🛡️ S-CAPTCHA ENGINE</h1></div>
+
 
         <!-- 1. Key Gen -->
         <div class="box">
@@ -79,7 +154,103 @@ HTML_CONTENT = """
         </div>
         <div id="res"></div>
     </div>
+    </div>
+    <!-- /#scap-app -->
 
+    <script>
+        const SCAP_ADMIN_EMAILS = __ADMIN_EMAILS_JSON__;
+
+        (function () {
+            const gate = document.getElementById('scap-gate');
+            const app = document.getElementById('scap-app');
+            const accountBox = document.getElementById('scap-account');
+            const userButtonSlot = document.getElementById('scap-user-button');
+            const signInBtn = document.getElementById('scap-signin-btn');
+            const statusEl = document.getElementById('scap-status');
+
+            let clerkReady = false;
+
+            function setStatus(msg, isError) {
+                statusEl.textContent = msg;
+                statusEl.classList.toggle('is-error', !!isError);
+            }
+
+            function isAdmin(user) {
+                if (!SCAP_ADMIN_EMAILS.length) return false;
+                const addr = user && user.primaryEmailAddress && user.primaryEmailAddress.emailAddress;
+                if (!addr) return false;
+                return SCAP_ADMIN_EMAILS.indexOf(addr.toLowerCase()) !== -1;
+            }
+
+            function showGate(message, isError) {
+                app.hidden = true;
+                accountBox.hidden = true;
+                gate.hidden = false;
+                signInBtn.hidden = false;
+                setStatus(message, isError);
+            }
+
+            function showApp() {
+                gate.hidden = true;
+                app.hidden = false;
+                accountBox.hidden = false;
+            }
+
+            function mountUserButton() {
+                try {
+                    userButtonSlot.innerHTML = '';
+                    window.Clerk.mountUserButton(userButtonSlot);
+                } catch (e) { console.error('S-Captcha admin: could not mount user button', e); }
+            }
+
+            function evaluateAccess() {
+                const user = window.Clerk.user;
+                if (!user) {
+                    signInBtn.hidden = false;
+                    showGate('Sign in to continue.', false);
+                    return;
+                }
+                if (!isAdmin(user)) {
+                    signInBtn.hidden = true;
+                    showGate('Signed in, but this account is not on the admin list. Contact the owner if you believe this is a mistake.', true);
+                    return;
+                }
+                showApp();
+                mountUserButton();
+            }
+
+            signInBtn.addEventListener('click', function () {
+                if (clerkReady && window.Clerk.openSignIn) {
+                    window.Clerk.openSignIn();
+                } else {
+                    setStatus('Still connecting… try again in a moment.', false);
+                }
+            });
+
+            function boot() {
+                if (!window.Clerk) {
+                    showGate('Auth service failed to load. Check CLERK_PUBLISHABLE_KEY on the server.', true);
+                    return;
+                }
+                window.Clerk.load().then(function () {
+                    clerkReady = true;
+                    evaluateAccess();
+                    if (window.Clerk.addListener) {
+                        window.Clerk.addListener(evaluateAccess);
+                    }
+                }).catch(function (err) {
+                    console.error('S-Captcha admin: Clerk failed to initialize', err);
+                    showGate('Auth service unavailable. Please refresh.', true);
+                });
+            }
+
+            if (window.Clerk) {
+                boot();
+            } else {
+                window.addEventListener('load', boot);
+            }
+        })();
+    </script>
     <script>
         const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxhafkm6BGu4TaRfPkmYeDF-nP4lx-AUx7d2Mk35NOV7JMTeG2zwCdzDVSkXiNRpA7j/exec";
 
@@ -192,7 +363,10 @@ HTML_CONTENT = """
 
 @app.get("/", response_class=HTMLResponse)
 async def admin_dashboard():
-    return HTML_CONTENT
+    import json
+    page = HTML_CONTENT.replace("__CLERK_SCRIPT_TAG__", CLERK_SCRIPT_TAG)
+    page = page.replace("__ADMIN_EMAILS_JSON__", json.dumps(ADMIN_EMAILS))
+    return page
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
