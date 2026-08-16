@@ -47,8 +47,9 @@ S-Captcha provides direct snippet configuration for different color themes:
 ## 🚀 Quick Setup
 
 Drop this single line into your site's `<head>` tag to activate S-Captcha instantly:
+# ** note for all feturs go on - or full acces go on - https://www.scaptua.duckdns.org/ **
 
 ```html
 <script src="[https://www.scaptua.duckdns.org/widget.js](https://www.scaptua.duckdns.org/widget.js)" async defer></script>
 ---
-# for full acces go on - https://www.scaptua.duckdns.org/
+
