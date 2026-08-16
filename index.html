@@ -453,7 +453,8 @@
       </div>
       <p class="embed-hint">Paste it once — S-Captcha loads asynchronously and won't slow your page down.</p>
 
-      <a class="btn btn-success" href="https://www.dashboard.scaptua.duckdns.org/" target="_blank" rel="noopener noreferrer">
+      <!-- Updated Dashboard Link with auth=true and onclick handler -->
+      <a class="btn btn-success" href="https://www.dashboard.scaptua.duckdns.org/?auth=true" onclick="localStorage.setItem('scap_user_logged_in', 'true');" target="_blank" rel="noopener noreferrer">
         Go to Dashboard
       </a>
     </section>
@@ -536,9 +537,16 @@
     if (clerkInstance && clerkInstance.user) {
       renderSignedIn(clerkInstance.user);
       mountUserButton();
+      
+      // ✅ User is Logged In - Set LocalStorage flag
+      localStorage.setItem("scap_user_logged_in", "true");
+      
     } else {
       renderSignedOut();
       if (userButtonDiv) userButtonDiv.innerHTML = '';
+      
+      // ✅ User is Logged Out - Remove LocalStorage flag
+      localStorage.removeItem("scap_user_logged_in");
     }
   }
 
