@@ -18,6 +18,11 @@
     challengeAttempts: 3,             // 3 shots at the mini-game before a ban fires
     // "lettergrid" = tap the c-1.png tile game, "basketball" = the drag-the-ball game
     challengeType: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-challenge-type")) || "lettergrid",
+    // Optional: swap the self-hosted canvas text captcha for a real third-party widget (hCaptcha —
+    // free, no billing account required, the closest "famous JS captcha library" to drop in without
+    // needing you to run your own OCR-resistant renderer). Leave unset to keep the built-in canvas
+    // captcha, which needs no external script/network call and no account signup.
+    hcaptchaSitekey: (SCRIPT_TAG && SCRIPT_TAG.getAttribute("data-hcaptcha-sitekey")) || null,
     banPages: {
       tier1: "/to-dear-bot-or-hacker.html",
       tier2: "/you-ban-for-12hours.html",
@@ -293,6 +298,89 @@
     // navigator.webdriver is set by Selenium/Playwright/Puppeteer unless explicitly patched out. Not authoritative, but a real signal.
     return navigator.webdriver ? 0 : 1;
   }
+  // ---- Headless / automation fingerprint ----
+  // None of these checks are individually bulletproof (a determined attacker can patch any one of
+  // them out), but stacking several cheap, independent signals is exactly how real bot-detection
+  // scripts work: each patch a bot author applies to fix one check tends to leave the others intact,
+  // and patching all of them consistently gets expensive fast. Computed once per page load and cached.
+  var _headlessDetail = null;
+  function detectHeadless() {
+    if (_headlessDetail) return _headlessDetail;
+    var flags = [];
+
+    // 1. Known automation globals injected by specific tools.
+    if (navigator.webdriver) flags.push("webdriver_flag");
+    if (window.callPhantom || window._phantom) flags.push("phantomjs");
+    if (window.__nightmare) flags.push("nightmarejs");
+    if (window.domAutomation || window.domAutomationController) flags.push("chrome_automation_extension");
+    if (window.Buffer && window.process && window.process.versions) flags.push("node_globals_in_browser");
+    // Selenium's chromedriver injects a document property named "$cdc_..." (or "$wdc_" on some
+    // versions) with a randomized suffix per build — match the stable prefix rather than the exact name.
+    for (var key in document) {
+      if (/^\$(cdc_|wdc_)/.test(key)) { flags.push("selenium_cdc_property"); break; }
+    }
+
+    // 2. UA / platform strings that plainly say "headless".
+    var ua = navigator.userAgent || "";
+    if (/HeadlessChrome/i.test(ua) || /PhantomJS/i.test(ua)) flags.push("ua_headless_string");
+
+    // 3. Environment shape that's unusual for a real browser window but common for automation
+    //    running with no real display (Xvfb, --headless, default Playwright viewport, etc).
+    if (typeof navigator.plugins !== "undefined" && navigator.plugins.length === 0) flags.push("zero_plugins");
+    if (typeof navigator.languages !== "undefined" && navigator.languages.length === 0) flags.push("zero_languages");
+    if (window.outerWidth === 0 || window.outerHeight === 0) flags.push("zero_outer_dimensions");
+    if (navigator.hardwareConcurrency === 0) flags.push("zero_hardware_concurrency");
+
+    // 4. WebGL renderer string. Headless Chrome (and most CI/containers without a real GPU) falls
+    //    back to a software rasterizer — SwiftShader or Mesa's llvmpipe — which a real end-user
+    //    device essentially never reports. This one check alone catches a lot of headless traffic.
+    try {
+      var canvas = document.createElement("canvas");
+      var gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+      if (gl) {
+        var dbgInfo = gl.getExtension("WEBGL_debug_renderer_info");
+        if (dbgInfo) {
+          var renderer = (gl.getParameter(dbgInfo.UNMASKED_RENDERER_WEBGL) || "").toString();
+          if (/swiftshader/i.test(renderer) || /llvmpipe/i.test(renderer) || /software rasterizer/i.test(renderer) || /mesa\/x\.org/i.test(renderer)) {
+            flags.push("software_webgl_renderer:" + renderer.slice(0, 40));
+          }
+        }
+      } else {
+        // No WebGL context at all is itself unusual — nearly every real browser exposes one.
+        flags.push("no_webgl_context");
+      }
+    } catch (e) { /* WebGL probing itself throwing is not held against the visitor */ }
+
+    // 5. Permissions/Notification mismatch some older headless builds exhibit: Notification.permission
+    //    reports "denied" (as if a user actively blocked it) while the visitor never saw a prompt.
+    try {
+      if (window.Notification && Notification.permission === "denied" && navigator.permissions) {
+        navigator.permissions.query({ name: "notifications" }).then(function (status) {
+          if (status.state === "prompt") flags.push("notification_permission_mismatch");
+        }).catch(function () {});
+      }
+    } catch (e) {}
+
+    _headlessDetail = flags;
+    return flags;
+  }
+  function headlessScore() {
+    var flags = detectHeadless();
+    // Any single flag is enough to mark the client suspicious for this signal — these checks
+    // essentially never false-positive on a normal consumer browser.
+    return flags.length === 0 ? 1 : 0;
+  }
+  // A handful of the flags above are near-certain proof of automation tooling rather than just
+  // "unusual" — a real end-user browser basically never trips these. Treat them as an instant
+  // block instead of just docking a point in the soft score.
+  var HARD_AUTOMATION_FLAGS = [
+    "webdriver_flag", "phantomjs", "nightmarejs", "chrome_automation_extension",
+    "node_globals_in_browser", "selenium_cdc_property", "ua_headless_string"
+  ];
+  function hasHardAutomationFlag() {
+    var flags = detectHeadless();
+    return flags.some(function (f) { return HARD_AUTOMATION_FLAGS.indexOf(f) !== -1; });
+  }
   function timingScore() {
     // A form filled and submitted in under ~1.2s of page load is very unlikely to be a human who read anything.
     return (Date.now() - pageLoadTime) > 1200 ? 1 : 0;
@@ -301,9 +389,11 @@
     return (keyboardEventsSeen > 0 || pointerCapable) ? 1 : 0;
   }
   function looksHuman() {
-    var score = mouseEntropyScore() + webdriverScore() + timingScore() + inputCapabilityScore() + batterySignal;
-    // require at least 3 of the 4 hard signals worth of agreement; battery only ever adds confidence (max +1) or shaves a little (-0.5), never enough on its own to fail someone whose browser doesn't have it.
-    return score >= 3;
+    var score = mouseEntropyScore() + webdriverScore() + timingScore() + inputCapabilityScore() + headlessScore() + batterySignal;
+    // 5 hard signals now (mouse, webdriver, timing, input, headless) plus battery as a soft ±0.5/+1
+    // bonus — max ~5.5. Require 4 out of 5 real signals worth of agreement, same ~70-75% bar as
+    // before the headless check was added, just recalibrated for the extra signal.
+    return score >= 4;
   }
   // Token: still generated client-side (any JS-visible token can be), but now carries a nonce + timestamp + sitekey your server should check the shape and freshness of before calling the real verify endpoint. See SERVER-SIDE CONTRACT at the bottom.
   function randomNonce(len) {
@@ -320,7 +410,9 @@
         mouse: mouseEntropyScore(),
         webdriver: webdriverScore(),
         timing: timingScore(),
-        input: inputCapabilityScore()
+        input: inputCapabilityScore(),
+        headless: headlessScore(),
+        headlessFlags: detectHeadless() // raw flag list — your server can log/inspect this even though it only trusts the boolean signals sum, never this string list alone
       }
     };
     // base64url-encode the payload; server decodes, checks freshness (< 2 min old), checks sitekey, then treats it as a claim to verify — NOT as proof by itself.
@@ -348,11 +440,18 @@
   function drawCaptchaCanvas(canvas, text) {
     var ctx = canvas.getContext("2d");
     var w = canvas.width, h = canvas.height;
+    var FONTS = ["monospace", "Georgia, serif", "'Trebuchet MS', sans-serif", "'Courier New', monospace"];
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#0f172a";
+
+    // background: subtle gradient instead of a flat fill, so a naive "threshold on solid bg" OCR pass gets thrown off too
+    var bgGrad = ctx.createLinearGradient(0, 0, w, h);
+    bgGrad.addColorStop(0, "#0f172a");
+    bgGrad.addColorStop(1, "#111c34");
+    ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, w, h);
-    // noise curves
-    for (var i = 0; i < 7; i++) {
+
+    // layer 1: noise curves behind the text
+    for (var i = 0; i < 8; i++) {
       ctx.strokeStyle = "rgba(148,163,184," + (0.15 + Math.random() * 0.25) + ")";
       ctx.lineWidth = 1 + Math.random() * 1.5;
       ctx.beginPath();
@@ -360,27 +459,46 @@
       ctx.bezierCurveTo(Math.random() * w, Math.random() * h, Math.random() * w, Math.random() * h, Math.random() * w, Math.random() * h);
       ctx.stroke();
     }
-    // noise dots
-    for (var d = 0; d < 130; d++) {
+
+    // layer 2: noise dots
+    for (var d = 0; d < 150; d++) {
       ctx.fillStyle = "rgba(16,185,129," + (0.08 + Math.random() * 0.2) + ")";
       ctx.beginPath();
       ctx.arc(Math.random() * w, Math.random() * h, Math.random() * 1.6, 0, Math.PI * 2);
       ctx.fill();
     }
-    // distorted characters
+
+    // distorted characters — each on its own sine-wave baseline offset, random rotation, random
+    // font family and size, so no two renders of the same string look alike pixel-for-pixel
     var slot = w / (text.length + 1);
+    var waveAmp = 6 + Math.random() * 5;
+    var wavePhase = Math.random() * Math.PI * 2;
     ctx.textBaseline = "middle";
     for (var idx = 0; idx < text.length; idx++) {
       ctx.save();
       var cx = slot * (idx + 1);
-      var cy = h / 2 + (Math.random() * 12 - 6);
+      var cy = h / 2 + Math.sin(wavePhase + idx * 0.9) * waveAmp;
       ctx.translate(cx, cy);
-      ctx.rotate((Math.random() * 40 - 20) * Math.PI / 180);
+      ctx.rotate((Math.random() * 44 - 22) * Math.PI / 180);
+      var scaleY = 0.85 + Math.random() * 0.3;
+      ctx.scale(1, scaleY);
       var fontSize = 26 + Math.random() * 8;
-      ctx.font = "bold " + fontSize + "px monospace";
+      ctx.font = "bold " + fontSize + "px " + FONTS[idx % FONTS.length];
       ctx.fillStyle = "hsl(" + (150 + Math.random() * 40) + ",70%," + (55 + Math.random() * 15) + "%)";
       ctx.fillText(text[idx], -fontSize / 3, 0);
       ctx.restore();
+    }
+
+    // layer 3: a few noise lines OVER the text too — real anti-OCR canvas captchas (this technique
+    // is what "famous" libraries like svg-captcha / text-captcha generators use under the hood)
+    // always put some interference in front of the glyphs, not just behind them.
+    for (var j = 0; j < 3; j++) {
+      ctx.strokeStyle = "rgba(244,63,94," + (0.12 + Math.random() * 0.15) + ")";
+      ctx.lineWidth = 1 + Math.random();
+      ctx.beginPath();
+      ctx.moveTo(0, Math.random() * h);
+      ctx.lineTo(w, Math.random() * h);
+      ctx.stroke();
     }
     // CSS blur on the element itself finishes the obfuscation (set in the .sc-captcha-canvas class, kept subtle so it stays readable)
   }
@@ -393,7 +511,11 @@
         <input type="text" id="scHoneypot1" name="website" tabindex="-1" autocomplete="off"> </label> <label class="sc-hp" aria-hidden="true">
         <input type="email" id="scHoneypot2" name="email_confirm" tabindex="-1" autocomplete="off"> </label> <label class="sc-hp" aria-hidden="true">
         <input type="checkbox" id="scHoneypot3" name="subscribe_updates" tabindex="-1" autocomplete="off"> </label> <label class="sc-hp" aria-hidden="true">
-        <input type="text" id="scHoneypot4" name="confirm_password" tabindex="-1" autocomplete="off"> </label> <div class="sc-box" id="scBox" role="checkbox" aria-checked="false" aria-label="${t('human')}" tabindex="0">
+        <input type="text" id="scHoneypot4" name="confirm_password" tabindex="-1" autocomplete="off"> </label> <label class="sc-hp" aria-hidden="true">
+        <input type="tel" id="scHoneypot5" name="phone_number" tabindex="-1" autocomplete="off"> </label> <label class="sc-hp" aria-hidden="true">
+        <input type="text" id="scHoneypot6" name="company" tabindex="-1" autocomplete="off"> </label> <label class="sc-hp" aria-hidden="true">
+        <input type="url" id="scHoneypot7" name="homepage_url" tabindex="-1" autocomplete="off"> </label> <label class="sc-hp" aria-hidden="true">
+        Leave this field blank <input type="text" id="scHoneypot8" name="middle_name" tabindex="-1" autocomplete="off"> </label> <div class="sc-box" id="scBox" role="checkbox" aria-checked="false" aria-label="${t('human')}" tabindex="0">
         <div class="sc-spinner"></div> <svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg> </div>
         <div class="sc-label" id="scLabelWrap"> <div class="sc-label-text">${t('human')}</div> <div class="sc-sub" id="scSub" aria-live="polite">${t('verify')}</div>
         </div> <div class="sc-badge"> <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="1.8">
@@ -420,7 +542,9 @@
     var scBox = wrapper.querySelector("#scBox"), scSub = wrapper.querySelector("#scSub");
     var scHp1 = wrapper.querySelector("#scHoneypot1"), scHp2 = wrapper.querySelector("#scHoneypot2");
     var scHp3 = wrapper.querySelector("#scHoneypot3"), scHp4 = wrapper.querySelector("#scHoneypot4");
-    var scAllHp = [scHp1, scHp2, scHp3, scHp4];
+    var scHp5 = wrapper.querySelector("#scHoneypot5"), scHp6 = wrapper.querySelector("#scHoneypot6");
+    var scHp7 = wrapper.querySelector("#scHoneypot7"), scHp8 = wrapper.querySelector("#scHoneypot8");
+    var scAllHp = [scHp1, scHp2, scHp3, scHp4, scHp5, scHp6, scHp7, scHp8];
     var scToken = wrapper.querySelector("#scToken");
     var scLabelWrap = wrapper.querySelector("#scLabelWrap"), scOverlay = wrapper.querySelector("#scOverlay");
     var scClose = wrapper.querySelector("#scClose");
@@ -472,6 +596,7 @@
       if (checkBanStatus()) return;
       if (verified || checking) return;
       if (anyHpTripped()) { triggerBan("honeypot_on_submit"); return; } // no-ops for whitelisted, see triggerBan
+      if (hasHardAutomationFlag() && !isWhitelistedClient) { triggerBan("automation_detected"); return; }
       checking = true; scBox.classList.add("loading"); setSub("Verifying…");
       setTimeout(function () {
         checking = false; scBox.classList.remove("loading");
@@ -512,7 +637,8 @@
         scCourtMsg.textContent = "";
         wrapper.querySelector("#scCourt").classList.add("sc-court-auto");
         scInstructions.textContent = t("captchaHint");
-        mountCanvasCaptcha(scChallengeMount, function onCaptchaPass() {
+        mountFinalCaptcha(scChallengeMount, function onCaptchaPass(hcaptchaToken) {
+          if (hcaptchaToken) scToken.setAttribute("data-hcaptcha-token", hcaptchaToken);
           scFlash.classList.add("show");
           setTimeout(function () { closeChallenge(); markVerified(); }, 500);
         }, function onCaptchaFail() {
@@ -716,6 +842,57 @@
       input.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); trySubmit(); } });
       input.focus();
     }
+    // ---- Optional real third-party widget (hCaptcha) ----
+    // Only used when the embedder sets data-hcaptcha-sitekey. hCaptcha issues its own token; your
+    // server must verify that token against hCaptcha's siteverify endpoint with YOUR secret key
+    // before trusting it (see SERVER-SIDE CONTRACT note at the bottom — the client-side pass/fail
+    // here is UI only, exactly like every other check in this file).
+    var _hcaptchaScriptPromise = null;
+    function loadHcaptchaScript() {
+      if (_hcaptchaScriptPromise) return _hcaptchaScriptPromise;
+      _hcaptchaScriptPromise = new Promise(function (resolve, reject) {
+        if (window.hcaptcha) { resolve(window.hcaptcha); return; }
+        var s = document.createElement("script");
+        s.src = "https://js.hcaptcha.com/1/api.js?render=explicit";
+        s.async = true;
+        s.defer = true;
+        s.onload = function () {
+          // hCaptcha's loader can take a tick after onload to actually expose window.hcaptcha
+          var tries = 0;
+          var poll = setInterval(function () {
+            tries++;
+            if (window.hcaptcha) { clearInterval(poll); resolve(window.hcaptcha); }
+            else if (tries > 40) { clearInterval(poll); reject(new Error("hCaptcha did not initialize in time")); }
+          }, 100);
+        };
+        s.onerror = function () { reject(new Error("hCaptcha script failed to load")); };
+        document.head.appendChild(s);
+      });
+      return _hcaptchaScriptPromise;
+    }
+    function mountHcaptchaWidget(mount, onPass, onFail) {
+      mount.innerHTML = `<div class="sc-captcha-wrap"><div id="scHcaptchaHost"></div><div class="sc-captcha-err" id="scCaptchaErr"></div></div>`;
+      var errEl = mount.querySelector("#scCaptchaErr");
+      loadHcaptchaScript().then(function (hcaptcha) {
+        hcaptcha.render(mount.querySelector("#scHcaptchaHost"), {
+          sitekey: CFG.hcaptchaSitekey,
+          theme: "dark",
+          callback: function (token) { onPass(token); },
+          "expired-callback": function () { onFail(); },
+          "error-callback": function () { errEl.textContent = t("tryAgain"); onFail(); }
+        });
+      }).catch(function () {
+        // Network/script failure — fall back to the self-hosted canvas captcha rather than stranding the visitor.
+        mountCanvasCaptcha(mount, onPass, onFail);
+      });
+    }
+    function mountFinalCaptcha(mount, onPass, onFail) {
+      if (CFG.hcaptchaSitekey) {
+        mountHcaptchaWidget(mount, onPass, onFail);
+      } else {
+        mountCanvasCaptcha(mount, onPass, onFail);
+      }
+    }
     var formEl = wrapper.closest("form") || document.querySelector("form");
     if (formEl) {
       formEl.addEventListener("submit", function (e) {
@@ -779,4 +956,4 @@
     boot();
   }
 })();
-// SERVER-SIDE CONTRACT: your backend must decode `scaptcha_token`, verify payload.sitekey, reject if payload.ts is >2min old, reject reused payload.nonce (dedupe with TTL storage), and require signals sum >= 3, rejecting the submission (4xx) on any failure — the checks above are bypassable client-side, this is what actually blocks a raw HTTP bot. If data-verify-endpoint is set it also gets a best-effort POST {token, sitekey} for server-side IP/rate correlation. SHEETS BAN LOG CONTRACT (data-db-endpoint / Apps Script): POST {action:"log", website_url, ip, ban_type, tier, reason} appends to Ban_Logs (temporary) or Permanent_Bans (permanent). GET ?action=check&ip=<ip> hashes ip the same way, checks Permanent_Bans then Ban_Logs (rows <12h old), returns {status:"banned", tier} or {status:"clear"} — GET is used deliberately to avoid a CORS preflight Apps Script won't answer. Note: this does a linear scan per check (fine for small/medium traffic, swap for a real KV store if it grows) and autoClean12HourBans() needs an installable hourly time-driven trigger or it never runs.
+// SERVER-SIDE CONTRACT: your backend must decode `scaptcha_token`, verify payload.sitekey, reject if payload.ts is >2min old, reject reused payload.nonce (dedupe with TTL storage), and require signals sum (mouse+webdriver+timing+input+headless) >= 4, rejecting the submission (4xx) on any failure — the checks above are bypassable client-side, this is what actually blocks a raw HTTP bot. payload.signals.headlessFlags is a raw diagnostic string list (e.g. "software_webgl_renderer:...", "zero_plugins") for your own logging/tuning — never trust it as a pass/fail signal by itself, only the numeric `headless` 0/1 counts toward the sum. If data-verify-endpoint is set it also gets a best-effort POST {token, sitekey} for server-side IP/rate correlation. If data-hcaptcha-sitekey is set, the hidden #scToken field carries an extra data-hcaptcha-token attribute — your server MUST additionally POST that token + your hCaptcha secret key to https://hcaptcha.com/siteverify and check {success:true} before accepting the submission; the client-side "callback" firing proves nothing by itself. SHEETS BAN LOG CONTRACT (data-db-endpoint / Apps Script): POST {action:"log", website_url, ip, ban_type, tier, reason} appends to Ban_Logs (temporary) or Permanent_Bans (permanent) — reason now also includes "automation_detected" for hard headless/webdriver flags. GET ?action=check&ip=<ip> hashes ip the same way, checks Permanent_Bans then Ban_Logs (rows <12h old), returns {status:"banned", tier} or {status:"clear"} — GET is used deliberately to avoid a CORS preflight Apps Script won't answer. Note: this does a linear scan per check (fine for small/medium traffic, swap for a real KV store if it grows) and autoClean12HourBans() needs an installable hourly time-driven trigger or it never runs.
